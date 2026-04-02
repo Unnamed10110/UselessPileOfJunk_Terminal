@@ -5,6 +5,7 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:local="clr-namespace:UselessTerminal.Controls"
     Title="Useless Terminal"
+    Icon="pack://application:,,,/Assets/app.ico"
     Width="1200" Height="800"
     WindowStartupLocation="Manual"
     ExtendsContentIntoTitleBar="True"
