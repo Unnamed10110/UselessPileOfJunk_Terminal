@@ -134,17 +134,25 @@
                                                                 Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
                                                                 VerticalAlignment="Center" />
                                                         <ContentPresenter ContentSource="Header"
-                                                                          VerticalAlignment="Center" />
+                                                                          VerticalAlignment="Center"
+                                                                          TextElement.Foreground="{TemplateBinding Foreground}" />
                                                     </DockPanel>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.45" />
-                                                        <Setter TargetName="TabBorder" Property="BorderBrush" Value="#555555" />
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="1" />
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#333333" />
                                                     </Trigger>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.7" />
+                                                    <Trigger Property="IsSelected" Value="False">
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#888888" />
                                                     </Trigger>
+                                                    <MultiTrigger>
+                                                        <MultiTrigger.Conditions>
+                                                            <Condition Property="IsMouseOver" Value="True" />
+                                                            <Condition Property="IsSelected" Value="False" />
+                                                        </MultiTrigger.Conditions>
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.75" />
+                                                    </MultiTrigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </Setter.Value>

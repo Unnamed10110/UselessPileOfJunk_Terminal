@@ -32,6 +32,12 @@ public sealed class AppSettings
     public string BrightCyan { get; set; } = "#80fff5";
     public string BrightWhite { get; set; } = "#ffffff";
 
+    /// <summary>Full path to an image file shown behind the terminal (empty = none).</summary>
+    public string ShellBackgroundImagePath { get; set; } = "";
+
+    /// <summary>Opacity of the background image layer (0–1).</summary>
+    public double ShellBackgroundImageOpacity { get; set; } = 0.4;
+
     public string ToThemeJson()
     {
         return System.Text.Json.JsonSerializer.Serialize(new

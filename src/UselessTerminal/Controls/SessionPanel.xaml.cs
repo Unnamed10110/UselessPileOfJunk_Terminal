@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
 using MenuItem = System.Windows.Controls.MenuItem;
@@ -473,6 +474,78 @@ public sealed partial class SessionPanel : UserControl
     }
 
     private void ImportWt_Click(object sender, RoutedEventArgs e) => ImportWindowsTerminalProfiles();
+
+    private void ExportSessions_Click(object sender, RoutedEventArgs e) => ExportSessions();
+
+    private void ImportSessions_Click(object sender, RoutedEventArgs e) => ImportSessions();
+
+    private void ContextTree_ExportSessions_Click(object sender, RoutedEventArgs e) => ExportSessions();
+
+    private void ContextTree_ImportSessions_Click(object sender, RoutedEventArgs e) => ImportSessions();
+
+    private void ExportSessions()
+    {
+        var dlg = new SaveFileDialog
+        {
+            Filter = "JSON (*.json)|*.json|All files (*.*)|*.*",
+            DefaultExt = ".json",
+            FileName = "useless-terminal-sessions.json",
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            _store.ExportToFile(dlg.FileName);
+            System.Windows.MessageBox.Show(
+                "Sessions exported successfully.",
+                "Export",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Export failed.\n\n{ex.Message}",
+                "Export",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void ImportSessions()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "JSON (*.json)|*.json|All files (*.*)|*.*",
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var confirm = System.Windows.MessageBox.Show(
+            "Replace all sessions and folders with the contents of this file?\n\nThis cannot be undone.",
+            "Import sessions",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        try
+        {
+            _store.ImportFromFile(dlg.FileName);
+            RefreshList(SearchBox.Text);
+            System.Windows.MessageBox.Show(
+                "Sessions imported successfully.",
+                "Import",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Import failed.\n\n{ex.Message}",
+                "Import",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
 
     private bool ShowEditDialog(SavedSession session, string title)
     {

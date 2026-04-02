@@ -296,6 +296,45 @@ public sealed class SessionStore
             Sessions[i].SortOrder = i;
         Save();
     }
+
+    public void ExportToFile(string path)
+    {
+        var root = new SessionStoreRoot { Folders = Folders, Sessions = Sessions };
+        string json = JsonSerializer.Serialize(root, JsonOptions);
+        File.WriteAllText(path, json);
+    }
+
+    /// <summary>Replaces folders and sessions from a JSON file (same format as the app store or legacy session array).</summary>
+    public void ImportFromFile(string path)
+    {
+        string json = File.ReadAllText(path).TrimStart();
+        if (json.StartsWith('['))
+        {
+            Sessions = JsonSerializer.Deserialize<List<SavedSession>>(json, JsonOptions) ?? new();
+            Folders = new();
+            foreach (var s in Sessions)
+                s.FolderId = NormalizeFolderId(s.FolderId);
+        }
+        else
+        {
+            var root = JsonSerializer.Deserialize<SessionStoreRoot>(json, JsonOptions);
+            if (root is null)
+            {
+                Sessions = new();
+                Folders = new();
+            }
+            else
+            {
+                Folders = root.Folders ?? new();
+                Sessions = root.Sessions ?? new();
+                foreach (var s in Sessions)
+                    s.FolderId = NormalizeFolderId(s.FolderId);
+            }
+        }
+
+        FlattenFoldersToRoot();
+        Save();
+    }
 }
 
 internal sealed class SessionStoreRoot

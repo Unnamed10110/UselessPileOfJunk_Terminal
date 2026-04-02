@@ -7,7 +7,13 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
-  #terminal { width: 100%; height: 100%; }
+  #wrap { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  #termBg {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    pointer-events: none; z-index: 0; opacity: 0;
+  }
+  #terminal { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
   .xterm-viewport::-webkit-scrollbar { width: 8px; background: transparent; }
   .xterm-viewport::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
   .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
@@ -17,7 +23,10 @@
 </style>
 </head>
 <body>
-<div id="terminal"></div>
+<div id="wrap">
+  <div id="termBg"></div>
+  <div id="terminal"></div>
+</div>
 <script src="xterm.min.js"></script>
 <script src="xterm-addon-fit.min.js"></script>
 <script src="xterm-addon-webgl.min.js"></script>
@@ -153,16 +162,34 @@
         term.options.scrollback = lines;
     };
 
-    window.termApplySettings = function(json) {
-        const s = JSON.parse(json);
+    window.termApplySettingsRaw = function(jsonStr) {
+        const s = JSON.parse(jsonStr);
         if (s.fontFamily) term.options.fontFamily = s.fontFamily;
         if (s.fontSize) term.options.fontSize = s.fontSize;
         if (s.cursorBlink !== undefined) term.options.cursorBlink = s.cursorBlink;
         if (s.cursorStyle) term.options.cursorStyle = s.cursorStyle;
         if (s.scrollback) term.options.scrollback = s.scrollback;
-        if (s.theme) term.options.theme = s.theme;
+        if (s.theme) {
+            if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+                const t = Object.assign({}, s.theme);
+                t.background = 'rgba(0,0,0,0.82)';
+                term.options.theme = t;
+            } else {
+                term.options.theme = s.theme;
+            }
+        }
+        const bg = document.getElementById('termBg');
+        if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+            bg.style.backgroundImage = 'url(' + JSON.stringify(s.backgroundImageDataUrl) + ')';
+            let op = s.backgroundImageOpacity;
+            if (typeof op !== 'number' || isNaN(op)) op = 0.4;
+            bg.style.opacity = String(Math.max(0, Math.min(1, op)));
+        } else {
+            bg.style.backgroundImage = 'none';
+            bg.style.opacity = '0';
+        }
         document.body.style.background = s.theme?.background || '#000000';
-        document.getElementById('terminal').style.background = s.theme?.background || '#000000';
+        document.getElementById('terminal').style.background = 'transparent';
         fitAddon.fit();
     };
 

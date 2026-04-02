@@ -258,8 +258,14 @@
                 <TextBlock Text="Sessions" FontSize="14" FontWeight="Bold"
                            Foreground="#ffffff" VerticalAlignment="Center" />
                 <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
-                    <Button Click="ImportWt_Click"
-                            ToolTip="Import from Windows Terminal"
+                    <Button Click="ExportSessions_Click"
+                            ToolTip="Export sessions (JSON)"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="6,4" Cursor="Hand" Foreground="#ffffff">
+                        <ui:SymbolIcon Symbol="ArrowUp24" FontSize="14" />
+                    </Button>
+                    <Button Click="ImportSessions_Click"
+                            ToolTip="Import sessions (JSON)"
                             Background="Transparent" BorderThickness="0"
                             Padding="6,4" Cursor="Hand" Foreground="#ffffff">
                         <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="14" />
@@ -308,6 +314,9 @@
                     <MenuItem Header="New folder" Click="ContextTree_NewFolder_Click" />
                     <Separator />
                     <MenuItem Header="Import from Windows Terminal" Click="ContextTree_ImportWt_Click" />
+                    <Separator />
+                    <MenuItem Header="Export sessions…" Click="ContextTree_ExportSessions_Click" />
+                    <MenuItem Header="Import sessions…" Click="ContextTree_ImportSessions_Click" />
                 </ContextMenu>
             </TreeView.ContextMenu>
         </TreeView>

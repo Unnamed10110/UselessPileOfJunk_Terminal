@@ -583,22 +583,57 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         UpdateTabColorBar(tab);
     }
 
+    private void RefreshAllTabChrome()
+    {
+        foreach (var tab in _tabs)
+            UpdateTabColorBar(tab);
+    }
+
     private void UpdateTabColorBar(TerminalTabState tab)
     {
-        if (string.IsNullOrEmpty(tab.HighlightColor))
+        bool selected = tab.TabItem.IsSelected;
+
+        if (selected)
+        {
+            tab.TabItem.Background = Brushes.White;
+            if (string.IsNullOrEmpty(tab.HighlightColor))
+                tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0));
+            else
+            {
+                var rgb = ParseHexColor(tab.HighlightColor);
+                tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(
+                    (byte)(255 - rgb.R), (byte)(255 - rgb.G), (byte)(255 - rgb.B)));
+            }
+        }
+        else if (string.IsNullOrEmpty(tab.HighlightColor))
         {
             tab.TabItem.Background = Brushes.Transparent;
-            return;
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+        }
+        else
+        {
+            var color = ParseHexColor(tab.HighlightColor);
+            color.A = 90;
+            tab.TabItem.Background = new SolidColorBrush(color);
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
         }
 
-        var color = ParseHexColor(tab.HighlightColor);
-        color.A = 90;
-        tab.TabItem.Background = new SolidColorBrush(color);
-
         tab.TabItem.ApplyTemplate();
-        var tabBorder = FindNamedChild<System.Windows.Controls.Border>(tab.TabItem, "TabBorder");
-        if (tabBorder is null) return;
-        tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor)) { Opacity = 0.5 };
+        if (FindNamedChild<System.Windows.Controls.Border>(tab.TabItem, "TabBorder") is not { } tabBorder)
+            return;
+
+        tabBorder.Opacity = 1;
+        if (selected)
+        {
+            if (string.IsNullOrEmpty(tab.HighlightColor))
+                tabBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
+            else
+                tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor));
+        }
+        else if (string.IsNullOrEmpty(tab.HighlightColor))
+            tabBorder.BorderBrush = Brushes.Transparent;
+        else
+            tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor)) { Opacity = 0.5 };
     }
 
     private void SplitTab(TerminalTabState tab, Orientation orientation)
@@ -1004,6 +1039,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        RefreshAllTabChrome();
         if (TabStrip.SelectedItem is TabItem tabItem && tabItem.Tag is TerminalTabState tab)
             ActivateTab(tab);
     }

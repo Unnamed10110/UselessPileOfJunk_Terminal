@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Microsoft.Win32;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
 
@@ -74,7 +75,32 @@ public partial class SettingsWindow : Window
         CursorBlinkBox.IsChecked = _settings.CursorBlink;
         ScrollbackBox.Text = _settings.Scrollback.ToString();
 
+        ShellBgPathBox.Text = _settings.ShellBackgroundImagePath;
+        ShellBgOpacitySlider.Value = Math.Clamp(_settings.ShellBackgroundImageOpacity * 100, 0, 100);
+        ShellBgOpacityLabel.Text = $"{(int)ShellBgOpacitySlider.Value}%";
+
         BuildColorGrid();
+    }
+
+    private void ShellBgOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (ShellBgOpacityLabel is not null)
+            ShellBgOpacityLabel.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void BrowseShellBg_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|All files|*.*",
+        };
+        if (dlg.ShowDialog() == true)
+            ShellBgPathBox.Text = dlg.FileName;
+    }
+
+    private void ClearShellBg_Click(object sender, RoutedEventArgs e)
+    {
+        ShellBgPathBox.Text = "";
     }
 
     private void BuildColorGrid()
@@ -179,6 +205,9 @@ public partial class SettingsWindow : Window
         _settings.CursorStyle = (CursorStyleBox.SelectedItem as ComboBoxItem)?.Content as string ?? "bar";
         if (int.TryParse(ScrollbackBox.Text, out int sb) && sb > 0)
             _settings.Scrollback = sb;
+
+        _settings.ShellBackgroundImagePath = ShellBgPathBox.Text.Trim();
+        _settings.ShellBackgroundImageOpacity = Math.Clamp(ShellBgOpacitySlider.Value / 100.0, 0, 1);
 
         SettingsStore.Instance.Apply(_settings);
         DialogResult = true;
