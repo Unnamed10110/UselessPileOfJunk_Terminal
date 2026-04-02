@@ -1,0 +1,125 @@
+<UserControl
+    x:Class="UselessTerminal.Controls.SessionPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+
+    <Grid Background="#000000">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="12,10" Background="#000000"
+                BorderBrush="#333333" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <TextBlock Text="Sessions" FontSize="14" FontWeight="Bold"
+                           Foreground="#ffffff" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
+                    <Button Click="ImportWt_Click"
+                            ToolTip="Import from Windows Terminal"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="6,4" Cursor="Hand" Foreground="#ffffff">
+                        <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="14" />
+                    </Button>
+                    <Button Click="AddSession_Click"
+                            ToolTip="New Session (Ctrl+Shift+N)"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="6,4" Cursor="Hand" Foreground="#ffffff">
+                        <ui:SymbolIcon Symbol="Add24" FontSize="14" />
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Search -->
+        <Border Grid.Row="1" Padding="8,6">
+            <TextBox x:Name="SearchBox" 
+                     TextChanged="SearchBox_TextChanged"
+                     Background="#000000" Foreground="#ffffff"
+                     BorderBrush="#555555" BorderThickness="1"
+                     Padding="8,5" FontSize="12" />
+        </Border>
+
+        <!-- Session List -->
+        <ListBox x:Name="SessionList" Grid.Row="2"
+                 Background="Transparent" BorderThickness="0"
+                 Padding="4" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 MouseDoubleClick="SessionList_MouseDoubleClick">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="#ffffff" />
+                    <Setter Property="Padding" Value="8,6" />
+                    <Setter Property="Margin" Value="2,1" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                        Padding="{TemplateBinding Padding}"
+                                        CornerRadius="4" BorderThickness="1" BorderBrush="Transparent">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="#0d0d0d" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#333333" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="#000000" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#555555" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border CornerRadius="4" Padding="6,4">
+                        <Border.Background>
+                            <SolidColorBrush Color="{Binding ColorTag}" Opacity="0.15" />
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{Binding ColorTag}" Opacity="0.4" />
+                        </Border.BorderBrush>
+                        <Border.BorderThickness>1</Border.BorderThickness>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontSize="13"
+                                           Foreground="#ffffff" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding DisplayCommand}" FontSize="10"
+                                           Foreground="#888888" TextTrimming="CharacterEllipsis"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button Click="EditSession_Click" Tag="{Binding Id}"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                        ToolTip="Edit" Content="&#xE70F;"
+                                        FontFamily="Segoe MDL2 Assets" FontSize="11" />
+                                <Button Click="DeleteSession_Click" Tag="{Binding Id}"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                        ToolTip="Delete" Content="&#xE74D;"
+                                        FontFamily="Segoe MDL2 Assets" FontSize="11" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+
+</UserControl>

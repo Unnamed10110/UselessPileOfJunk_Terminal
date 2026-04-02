@@ -1,0 +1,148 @@
+<ui:FluentWindow
+    x:Class="UselessTerminal.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:local="clr-namespace:UselessTerminal.Controls"
+    Title="Useless Terminal"
+    Width="1200" Height="800"
+    WindowStartupLocation="Manual"
+    ExtendsContentIntoTitleBar="True"
+    WindowBackdropType="None"
+    Background="#000000">
+
+    <ui:FluentWindow.InputBindings>
+        <KeyBinding Key="B" Modifiers="Ctrl" Command="{Binding TogglePanelCommand}" />
+        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding NewTabCommand}" />
+        <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCommand}" />
+    </ui:FluentWindow.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <ui:TitleBar Grid.Row="0" Title="Useless Terminal" ShowMaximize="True" ShowMinimize="True" />
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SessionPanelColumn" Width="0" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Session Panel -->
+            <Border Grid.Column="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,1,0"
+                    ClipToBounds="True">
+                <local:SessionPanel x:Name="SessionPanel" />
+            </Border>
+
+            <!-- Main Content: Tab Bar + Terminal -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Tab Strip -->
+                <Border Grid.Row="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,0,1" Padding="0">
+                    <DockPanel>
+                        <Button x:Name="TogglePanelButton" DockPanel.Dock="Left"
+                                Click="TogglePanelButton_Click"
+                                ToolTip="Toggle Sessions (Ctrl+B)"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="10,6" Margin="4,2" Cursor="Hand"
+                                Foreground="#ffffff">
+                            <ui:SymbolIcon Symbol="PanelLeft24" FontSize="16" />
+                        </Button>
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="SettingsButton"
+                                    Click="SettingsButton_Click"
+                                    ToolTip="Settings (Ctrl+,)"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
+                                    Foreground="#ffffff">
+                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" />
+                            </Button>
+                            <Button x:Name="NewTabButton"
+                                    Click="NewTabButton_Click"
+                                    ToolTip="New Tab (Ctrl+T)"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
+                                    Foreground="#ffffff">
+                                <ui:SymbolIcon Symbol="Add24" FontSize="16" />
+                            </Button>
+                            <Button x:Name="NewTabDropdown"
+                                    Click="NewTabDropdown_Click"
+                                    ToolTip="Select shell"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="4,6" Margin="0,2,4,2" Cursor="Hand"
+                                    Foreground="#ffffff">
+                                <ui:SymbolIcon Symbol="ChevronDown24" FontSize="10" />
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="ShellMenu" />
+                                </Button.ContextMenu>
+                            </Button>
+                        </StackPanel>
+
+                        <TabControl x:Name="TabStrip"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="0" Margin="0"
+                                    SelectionChanged="TabStrip_SelectionChanged">
+                            <TabControl.ItemContainerStyle>
+                                <Style TargetType="TabItem">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="#ffffff" />
+                                    <Setter Property="BorderThickness" Value="0" />
+                                    <Setter Property="Padding" Value="10,4" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="FontSize" Value="10" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TabItem">
+                                                <Border x:Name="TabBorder"
+                                                        Background="{TemplateBinding Background}"
+                                                        Padding="{TemplateBinding Padding}"
+                                                        Margin="1,2" CornerRadius="4"
+                                                        BorderThickness="1" BorderBrush="Transparent">
+                                                    <DockPanel>
+                                                        <Button x:Name="CloseBtn" DockPanel.Dock="Right"
+                                                                Click="TabCloseButton_Click"
+                                                                Tag="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                                Background="Transparent" BorderThickness="0"
+                                                                Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
+                                                                Foreground="#888888" FontSize="10"
+                                                                Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                                                                VerticalAlignment="Center" />
+                                                        <ContentPresenter ContentSource="Header"
+                                                                          VerticalAlignment="Center" />
+                                                    </DockPanel>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.45" />
+                                                        <Setter TargetName="TabBorder" Property="BorderBrush" Value="#555555" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.7" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TabControl.ItemContainerStyle>
+                        </TabControl>
+                    </DockPanel>
+                </Border>
+
+                <!-- Terminal Content Area -->
+                <Grid x:Name="TerminalHost" Grid.Row="1" Background="#000000" />
+            </Grid>
+        </Grid>
+    </Grid>
+
+</ui:FluentWindow>
