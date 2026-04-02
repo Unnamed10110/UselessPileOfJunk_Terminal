@@ -21,6 +21,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private readonly List<TerminalTabState> _tabs = new();
     private TerminalTabState? _activeTab;
 
+    private TerminalTabState? _tabDragSource;
+    private Point _tabDragMouseDown;
+    private const double TabDragThreshold = 6;
+
     private static readonly string[] TabColors =
     [
         "", "#00ff44", "#ff003c", "#ffff00", "#00e5ff", "#ff00ff", "#ff8800", "#ffffff", "#888888"
@@ -41,8 +45,35 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
 
-        SessionPanel.SessionLaunched += session =>
+        if (ElevationHelper.IsProcessElevated())
         {
+            const string adminTitle = "Useless Terminal — Administrator";
+            Title = adminTitle;
+            MainTitleBar.Title = adminTitle;
+        }
+
+        SessionPanel.SessionLaunched += (session, runAsAdministrator) =>
+        {
+            // When this process is already elevated, ConPTY children inherit the same token — use
+            // embedded tabs only. External UAC launch is only needed when we are not elevated.
+            if (runAsAdministrator && !ElevationHelper.IsProcessElevated())
+            {
+                try
+                {
+                    ElevatedShellLauncher.Launch(session);
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show(
+                        $"Could not start an elevated shell.\n\n{ex.Message}",
+                        "Run as administrator",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                }
+
+                return;
+            }
+
             string command = session.GetFullCommand();
             string? workDir = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? null : session.WorkingDirectory;
             string? startCmd = string.IsNullOrWhiteSpace(session.StartingCommand) ? null : session.StartingCommand;
@@ -268,6 +299,119 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             var tab = _tabs[i];
             tab.TabItem.Header = $"{i + 1}  {tab.Title}";
         }
+    }
+
+    private void MoveTab(int fromIndex, int toIndexBeforeRemove)
+    {
+        if (fromIndex < 0 || fromIndex >= _tabs.Count) return;
+        if (toIndexBeforeRemove < 0 || toIndexBeforeRemove > _tabs.Count) return;
+
+        var tab = _tabs[fromIndex];
+        if (toIndexBeforeRemove == fromIndex || toIndexBeforeRemove == fromIndex + 1)
+            return;
+
+        _tabs.RemoveAt(fromIndex);
+        int insertPos = toIndexBeforeRemove > fromIndex ? toIndexBeforeRemove - 1 : toIndexBeforeRemove;
+        _tabs.Insert(insertPos, tab);
+
+        TabStrip.Items.Remove(tab.TabItem);
+        TabStrip.Items.Insert(insertPos, tab.TabItem);
+
+        TerminalHost.Children.Remove(tab.Container);
+        TerminalHost.Children.Insert(insertPos, tab.Container);
+
+        RenumberTabs();
+        TabStrip.SelectedItem = tab.TabItem;
+    }
+
+    private int GetTabInsertIndexFromPoint(Point posInTabStrip)
+    {
+        int n = TabStrip.Items.Count;
+        for (int i = 0; i < n; i++)
+        {
+            if (TabStrip.ItemContainerGenerator.ContainerFromIndex(i) is not TabItem ti)
+                continue;
+            if (ti.ActualWidth <= 0) continue;
+            Point topLeft = ti.TranslatePoint(new Point(0, 0), TabStrip);
+            double midX = topLeft.X + ti.ActualWidth / 2;
+            if (posInTabStrip.X < midX)
+                return i;
+        }
+
+        return n;
+    }
+
+    private bool IsPointOverTabHeaders(Point posInTabStrip)
+    {
+        if (_tabs.Count == 0) return false;
+        if (TabStrip.ItemContainerGenerator.ContainerFromIndex(0) is not TabItem first)
+            return posInTabStrip.Y <= 40;
+        double h = first.ActualHeight;
+        if (h <= 0) h = 32;
+        return posInTabStrip.Y <= h + 12;
+    }
+
+    private void TabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragSource = null;
+        if (FindParent<Button>(e.OriginalSource as DependencyObject) is not null)
+            return;
+        if (FindParent<TabItem>(e.OriginalSource as DependencyObject) is not { Tag: TerminalTabState tab })
+            return;
+        _tabDragSource = tab;
+        _tabDragMouseDown = e.GetPosition(null);
+    }
+
+    private void TabStrip_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _tabDragSource == null) return;
+        if ((e.GetPosition(null) - _tabDragMouseDown).Length < TabDragThreshold) return;
+        var data = _tabDragSource;
+        _tabDragSource = null;
+        DragDrop.DoDragDrop(TabStrip, new DataObject(typeof(TerminalTabState), data), DragDropEffects.Move);
+    }
+
+    private void TabStrip_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragSource = null;
+    }
+
+    private void TabStrip_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(TerminalTabState))) return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void TabStrip_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(TerminalTabState))) return;
+        if (e.Data.GetData(typeof(TerminalTabState)) is not TerminalTabState dragged) return;
+
+        var pos = e.GetPosition(TabStrip);
+        if (!IsPointOverTabHeaders(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        int insertIndex = GetTabInsertIndexFromPoint(pos);
+        int fromIndex = _tabs.IndexOf(dragged);
+        if (fromIndex < 0) return;
+
+        MoveTab(fromIndex, insertIndex);
+        e.Handled = true;
+    }
+
+    private static T? FindParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T t) return t;
+            child = VisualTreeHelper.GetParent(child);
+        }
+
+        return null;
     }
 
     private void UpdateTabHeader(TerminalTabState tab)

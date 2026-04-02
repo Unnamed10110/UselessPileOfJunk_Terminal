@@ -24,7 +24,7 @@
         </Grid.RowDefinitions>
 
         <!-- Title Bar -->
-        <ui:TitleBar Grid.Row="0" Title="Useless Terminal" ShowMaximize="True" ShowMinimize="True" />
+        <ui:TitleBar x:Name="MainTitleBar" Grid.Row="0" Title="Useless Terminal" ShowMaximize="True" ShowMinimize="True" />
 
         <!-- Main Content -->
         <Grid Grid.Row="1">
@@ -101,6 +101,12 @@
                         <TabControl x:Name="TabStrip"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="0" Margin="0"
+                                    AllowDrop="True"
+                                    PreviewMouseLeftButtonDown="TabStrip_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="TabStrip_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="TabStrip_PreviewMouseLeftButtonUp"
+                                    PreviewDragOver="TabStrip_PreviewDragOver"
+                                    Drop="TabStrip_Drop"
                                     SelectionChanged="TabStrip_SelectionChanged">
                             <TabControl.ItemContainerStyle>
                                 <Style TargetType="TabItem">

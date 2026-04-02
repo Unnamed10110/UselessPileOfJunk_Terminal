@@ -14,6 +14,8 @@ public sealed class SavedSession
     public string StartingCommand { get; set; } = "";
     public string ColorTag { get; set; } = "#00ff44";
     public string IconGlyph { get; set; } = "\uE756";
+    /// <summary>When set, session lives under this folder id; null/empty = root.</summary>
+    public string? FolderId { get; set; }
     public int SortOrder { get; set; }
 
     [JsonIgnore]
@@ -42,6 +44,7 @@ public sealed class SavedSession
         StartingCommand = StartingCommand,
         ColorTag = ColorTag,
         IconGlyph = IconGlyph,
+        FolderId = FolderId,
         SortOrder = SortOrder + 1
     };
 }
