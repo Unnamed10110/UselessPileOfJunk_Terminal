@@ -29,7 +29,8 @@
         <!-- Main Content -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SessionPanelColumn" Width="0" />
+                <ColumnDefinition x:Name="SessionPanelColumn" Width="0" MinWidth="0" MaxWidth="900" />
+                <ColumnDefinition x:Name="SessionSplitterColumn" Width="0" MinWidth="0" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -39,8 +40,17 @@
                 <local:SessionPanel x:Name="SessionPanel" />
             </Border>
 
+            <GridSplitter x:Name="SessionGridSplitter"
+                          Grid.Column="1"
+                          Width="5" HorizontalAlignment="Stretch"
+                          Background="#333333" BorderThickness="0"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"
+                          Cursor="SizeWE"
+                          DragCompleted="SessionGridSplitter_DragCompleted" />
+
             <!-- Main Content: Tab Bar + Terminal -->
-            <Grid Grid.Column="1">
+            <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />

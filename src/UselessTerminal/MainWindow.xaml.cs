@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Controls.Primitives;
 using UselessTerminal.Controls;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
@@ -16,7 +17,7 @@ namespace UselessTerminal;
 public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 {
     private bool _sessionPanelOpen;
-    private const double SessionPanelWidth = 260;
+    private double _sessionPanelWidth = 260;
     private readonly List<TerminalTabState> _tabs = new();
     private TerminalTabState? _activeTab;
 
@@ -46,7 +47,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             string? workDir = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? null : session.WorkingDirectory;
             string? startCmd = string.IsNullOrWhiteSpace(session.StartingCommand) ? null : session.StartingCommand;
             string? clr = string.IsNullOrWhiteSpace(session.ColorTag) ? null : session.ColorTag;
-            AddTab(session.Name, command, workDir, startCmd, clr);
+            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true);
         };
 
         SettingsStore.Instance.Load();
@@ -189,14 +190,26 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private void ToggleSessionPanel()
     {
         _sessionPanelOpen = !_sessionPanelOpen;
+        SessionPanelColumn.MinWidth = _sessionPanelOpen ? 160 : 0;
         SessionPanelColumn.Width = _sessionPanelOpen
-            ? new GridLength(SessionPanelWidth)
+            ? new GridLength(_sessionPanelWidth, GridUnitType.Pixel)
             : new GridLength(0);
+        SessionSplitterColumn.Width = _sessionPanelOpen
+            ? new GridLength(5)
+            : new GridLength(0);
+    }
+
+    private void SessionGridSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!_sessionPanelOpen || e.Canceled) return;
+        double w = SessionPanelColumn.ActualWidth;
+        if (w >= 160 && w <= 900)
+            _sessionPanelWidth = w;
     }
 
     // --- Tab Management ---
 
-    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null)
+    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false)
     {
         var container = new Grid { Visibility = Visibility.Collapsed };
         var termControl = new TerminalControl();
@@ -209,7 +222,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             WorkingDirectory = workingDirectory,
             StartingCommand = startingCommand,
             Control = termControl,
-            Container = container
+            Container = container,
+            Renamed = lockTitle
         };
 
         var tabItem = new TabItem
@@ -658,7 +672,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void DuplicateTab(TerminalTabState tab)
     {
-        AddTab(tab.Title, tab.Command, tab.WorkingDirectory);
+        AddTab(tab.Title, tab.Command, tab.WorkingDirectory, lockTitle: true);
     }
 
     private void SaveTabAsSession(TerminalTabState tab)
@@ -739,7 +753,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 if (dlg.ShowDialog() == true)
                 {
                     string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                    AddTab(dlg.ResultName, cmd, home, color: shellColor);
+                    AddTab(dlg.ResultName, cmd, home, color: shellColor, lockTitle: true);
                 }
             };
             ShellMenu.Items.Add(item);
@@ -781,6 +795,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (state.IsMaximized)
             WindowState = System.Windows.WindowState.Maximized;
 
+        if (state.SessionPanelWidth >= 160 && state.SessionPanelWidth <= 900)
+            _sessionPanelWidth = state.SessionPanelWidth;
+
         if (state.SessionPanelOpen)
             ToggleSessionPanel();
 
@@ -789,8 +806,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             foreach (var ts in state.Tabs)
             {
                 string? clr = string.IsNullOrEmpty(ts.HighlightColor) ? null : ts.HighlightColor;
-                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr);
-                _tabs[^1].Renamed = ts.Renamed;
+                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
             }
             if (state.ActiveTabIndex >= 0 && state.ActiveTabIndex < _tabs.Count)
                 TabStrip.SelectedItem = _tabs[state.ActiveTabIndex].TabItem;
@@ -811,6 +827,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             Height = RestoreBounds.Height,
             IsMaximized = WindowState == System.Windows.WindowState.Maximized,
             SessionPanelOpen = _sessionPanelOpen,
+            SessionPanelWidth = _sessionPanelWidth,
             ActiveTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : 0
         };
 

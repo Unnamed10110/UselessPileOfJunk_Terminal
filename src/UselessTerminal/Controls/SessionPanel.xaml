@@ -81,6 +81,23 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Border CornerRadius="4" Padding="6,4">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasDescription}" Value="True">
+                                        <Setter Property="ToolTip">
+                                            <Setter.Value>
+                                                <ToolTip Background="#1a1a1a" BorderBrush="#444444"
+                                                         BorderThickness="1" Padding="10,8" MaxWidth="320">
+                                                    <TextBlock Text="{Binding Description}"
+                                                               TextWrapping="Wrap" Foreground="#ffffff" />
+                                                </ToolTip>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
                         <Border.Background>
                             <SolidColorBrush Color="{Binding ColorTag}" Opacity="0.15" />
                         </Border.Background>

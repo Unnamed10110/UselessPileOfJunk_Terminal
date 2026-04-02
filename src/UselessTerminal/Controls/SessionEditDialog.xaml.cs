@@ -17,6 +17,7 @@ public partial class SessionEditDialog : Window
         InitializeComponent();
 
         NameBox.Text = session.Name;
+        DescriptionBox.Text = session.Description;
         ShellPathBox.Text = session.ShellPath;
         ArgumentsBox.Text = session.Arguments;
         WorkDirBox.Text = session.WorkingDirectory;
@@ -56,6 +57,7 @@ public partial class SessionEditDialog : Window
         }
 
         _session.Name = NameBox.Text.Trim();
+        _session.Description = DescriptionBox.Text.Trim();
         _session.ShellPath = ShellPathBox.Text.Trim();
         _session.Arguments = ArgumentsBox.Text.Trim();
         _session.WorkingDirectory = WorkDirBox.Text.Trim();
