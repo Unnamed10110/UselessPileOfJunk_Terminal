@@ -252,6 +252,8 @@ public partial class SettingsWindow : Window
         _settings.ShellBackgroundImagePath = ShellBgPathBox.Text.Trim();
         _settings.ShellBackgroundImageOpacity = Math.Clamp(ShellBgOpacitySlider.Value / 100.0, 0, 1);
 
+        SyncColorsFromGridIntoSettings();
+
         SettingsStore.Instance.Apply(_settings);
         DialogResult = true;
         Close();
@@ -263,6 +265,31 @@ public partial class SettingsWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// Ensures every visible hex field is written to <see cref="_settings"/> before save
+    /// (covers edge cases where TextChanged did not update the model).
+    /// </summary>
+    private void SyncColorsFromGridIntoSettings()
+    {
+        var type = typeof(AppSettings);
+        foreach (object? row in ColorGrid.Children)
+        {
+            if (row is not DockPanel panel) continue;
+            foreach (object? child in panel.Children)
+            {
+                if (child is not TextBox tb || tb.Tag is not string propName) continue;
+                string val = tb.Text.Trim();
+                if (!val.StartsWith('#') || (val.Length != 7 && val.Length != 4)) continue;
+                try
+                {
+                    _ = ParseColor(val);
+                    type.GetProperty(propName)?.SetValue(_settings, val);
+                }
+                catch { /* skip invalid */ }
+            }
+        }
+    }
+
     private static System.Windows.Media.Color ParseColor(string hex)
     {
         hex = hex.TrimStart('#');
@@ -271,6 +298,6 @@ public partial class SettingsWindow : Window
         byte r = Convert.ToByte(hex[..2], 16);
         byte g = Convert.ToByte(hex[2..4], 16);
         byte b = Convert.ToByte(hex[4..6], 16);
-        return Color.FromRgb(r, g, b);
+        return System.Windows.Media.Color.FromRgb(r, g, b);
     }
 }
