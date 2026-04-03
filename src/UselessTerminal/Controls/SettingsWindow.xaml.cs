@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using Microsoft.Win32;
+using FormsDialogResult = System.Windows.Forms.DialogResult;
+using WinFormsColorDialog = System.Windows.Forms.ColorDialog;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
 
@@ -124,7 +126,8 @@ public partial class SettingsWindow : Window
                 Background = new SolidColorBrush(ParseColor(colorVal)),
                 Margin = new Thickness(0, 0, 8, 0),
                 Cursor = System.Windows.Input.Cursors.Hand,
-                Tag = propName
+                Tag = propName,
+                ToolTip = "Click to open color palette"
             };
 
             var textBox = new TextBox
@@ -142,6 +145,11 @@ public partial class SettingsWindow : Window
             };
 
             textBox.TextChanged += ColorTextBox_Changed;
+            swatch.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                OpenColorPalette(propName, swatch, textBox);
+            };
 
             var lbl = new TextBlock
             {
@@ -185,6 +193,41 @@ public partial class SettingsWindow : Window
         catch { }
     }
 
+    private void OpenColorPalette(string propName, Border swatch, System.Windows.Controls.TextBox hexBox)
+    {
+        var info = typeof(AppSettings).GetProperty(propName);
+        if (info is null) return;
+
+        string current = (string)info.GetValue(_settings)!;
+        System.Windows.Media.Color wpfColor;
+        try { wpfColor = ParseColor(current); }
+        catch { wpfColor = Colors.White; }
+
+        var dlg = new WinFormsColorDialog
+        {
+            Color = System.Drawing.Color.FromArgb(wpfColor.R, wpfColor.G, wpfColor.B),
+            FullOpen = true,
+            SolidColorOnly = false,
+        };
+
+        var owner = new WpfWin32Window(this);
+        if (dlg.ShowDialog(owner) != FormsDialogResult.OK)
+            return;
+
+        System.Drawing.Color d = dlg.Color;
+        string hex = $"#{d.R:X2}{d.G:X2}{d.B:X2}";
+        info.SetValue(_settings, hex);
+        swatch.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(d.R, d.G, d.B));
+        hexBox.Text = hex;
+    }
+
+    private sealed class WpfWin32Window : System.Windows.Forms.IWin32Window
+    {
+        public IntPtr Handle { get; }
+        public WpfWin32Window(Window window) =>
+            Handle = new WindowInteropHelper(window).EnsureHandle();
+    }
+
     private void FontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (FontSizeLabel is not null)
@@ -220,7 +263,7 @@ public partial class SettingsWindow : Window
         Close();
     }
 
-    private static Color ParseColor(string hex)
+    private static System.Windows.Media.Color ParseColor(string hex)
     {
         hex = hex.TrimStart('#');
         if (hex.Length == 3)

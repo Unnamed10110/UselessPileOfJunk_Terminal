@@ -5,6 +5,7 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <RootNamespace>UselessTerminal</RootNamespace>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -15,6 +16,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="WPF-UI" Version="3.0.5" />
+  </ItemGroup>
+
+  <!-- WinForms ColorDialog only; do not import WinForms/Drawing into every file (conflicts with WPF). -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>
