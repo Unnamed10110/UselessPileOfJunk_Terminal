@@ -103,15 +103,42 @@
                     <Grid HorizontalAlignment="Stretch" MinWidth="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" MinWidth="0" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                   Foreground="#00e5ff" Margin="0,0,8,0" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="#00e5ff" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                   Foreground="#aaaaaa" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Setter Property="Text" Value="&#xE76C;" />
+                                    <Setter Property="ToolTip" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                     Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                           Value="True" />
+                                                <Condition Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                           Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Text" Value="&#xE70D;" />
+                                            <Setter Property="ToolTip" Value="Expanded" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="2" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
                                    Foreground="#ffffff" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    TextWrapping="NoWrap" />
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <StackPanel Grid.Column="3" Orientation="Horizontal">
                             <Button Click="AddSessionInFolder_Click" Tag="{Binding Folder.Id}"
                                     ToolTip="New session in folder" Background="Transparent" BorderThickness="0"
                                     Padding="4,2" Cursor="Hand" Foreground="#888888">

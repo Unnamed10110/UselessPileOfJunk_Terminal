@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -30,19 +31,6 @@ public partial class SettingsWindow : Window
         ("Selection FG", nameof(AppSettings.SelectionForeground)),
     ];
 
-    private static readonly string[] CommonFonts =
-    [
-        "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
-        "'JetBrains Mono', Consolas, monospace",
-        "'Fira Code', Consolas, monospace",
-        "'Source Code Pro', Consolas, monospace",
-        "Consolas, monospace",
-        "'Courier New', monospace",
-        "'Hack', Consolas, monospace",
-        "'IBM Plex Mono', Consolas, monospace",
-        "'Iosevka', Consolas, monospace",
-    ];
-
     public SettingsWindow(AppSettings settings)
     {
         _settings = settings.Clone();
@@ -52,8 +40,9 @@ public partial class SettingsWindow : Window
 
     private void PopulateFields()
     {
-        foreach (string font in CommonFonts)
-            FontFamilyBox.Items.Add(font);
+        FontFamilyBox.Items.Clear();
+        foreach (var ff in Fonts.SystemFontFamilies.OrderBy(f => f.Source))
+            FontFamilyBox.Items.Add(ff.Source);
         FontFamilyBox.Text = _settings.FontFamily;
 
         FontSizeSlider.Value = _settings.FontSize;
