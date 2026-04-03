@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:local="clr-namespace:UselessTerminal.Controls"
-    Title="Useless Terminal"
+    Title="Useless Terminal By Unnamed10110"
     Icon="pack://application:,,,/Assets/app.ico"
     Width="1200" Height="800"
     WindowStartupLocation="Manual"
@@ -24,8 +24,36 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <ui:TitleBar x:Name="MainTitleBar" Grid.Row="0" Title="Useless Terminal" ShowMaximize="True" ShowMinimize="True" />
+        <!-- Title Bar: chrome from TitleBar; centered caption bound to Window.Title (pass-through overlay) -->
+        <Grid Grid.Row="0">
+            <ui:TitleBar x:Name="MainTitleBar"
+                         Title=""
+                         ShowMaximize="True" ShowMinimize="True"
+                         Background="#000000"
+                         Foreground="#ffffff"
+                         ButtonsBackground="#000000"
+                         ButtonsForeground="#ffffff"
+                         Height="16"
+                         MinHeight="30"
+                         MaxHeight="30"
+                         Padding="2,0"
+                         FontSize="12" />
+            <Grid IsHitTestVisible="False">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Foreground="#ffffff"
+                           FontSize="16"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </Grid>
+        </Grid>
 
         <!-- Main Content -->
         <Grid Grid.Row="1">

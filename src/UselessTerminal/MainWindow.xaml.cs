@@ -46,11 +46,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         DataContext = this;
 
         if (ElevationHelper.IsProcessElevated())
-        {
-            const string adminTitle = "Useless Terminal — Administrator";
-            Title = adminTitle;
-            MainTitleBar.Title = adminTitle;
-        }
+            Title = "Useless Terminal — Administrator";
 
         SessionPanel.SessionLaunched += (session, runAsAdministrator) =>
         {
