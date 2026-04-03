@@ -102,9 +102,10 @@
 
                 <Border Height="1" Background="#333333" Margin="0,10,0,20" />
 
-                <!-- Background & Foreground -->
-                <TextBlock Text="C O L O R S" FontSize="11" FontWeight="Bold" Foreground="#888888"
-                           Margin="0,0,0,10" />
+                <TextBlock Text="P R O M P T   &amp;   O U T P U T" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Maps to ANSI colors (red, green, yellow, …) so shells and prompts follow the same roles."
+                           FontSize="10" Foreground="#555555" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                 <UniformGrid x:Name="ColorGrid" Columns="2" Margin="0,0,0,10">
                     <!-- Populated in code-behind -->

@@ -16,27 +16,18 @@ public partial class SettingsWindow : Window
 
     private static readonly (string Label, string Property)[] ColorEntries =
     [
-        ("Background", nameof(AppSettings.Background)),
-        ("Foreground", nameof(AppSettings.Foreground)),
-        ("Cursor", nameof(AppSettings.Cursor)),
+        ("Terminal background", nameof(AppSettings.TerminalBackground)),
+        ("Default text & prompt", nameof(AppSettings.TextDefault)),
+        ("Muted / secondary", nameof(AppSettings.TextMuted)),
+        ("Errors", nameof(AppSettings.ColorError)),
+        ("Warnings", nameof(AppSettings.ColorWarning)),
+        ("Commands & success", nameof(AppSettings.ColorCommand)),
+        ("Info / messages", nameof(AppSettings.ColorMessage)),
+        ("Paths & links", nameof(AppSettings.ColorAccent)),
+        ("Highlights", nameof(AppSettings.ColorHighlight)),
+        ("Cursor", nameof(AppSettings.CursorColor)),
         ("Selection BG", nameof(AppSettings.SelectionBackground)),
         ("Selection FG", nameof(AppSettings.SelectionForeground)),
-        ("Black", nameof(AppSettings.Black)),
-        ("Red", nameof(AppSettings.Red)),
-        ("Green", nameof(AppSettings.Green)),
-        ("Yellow", nameof(AppSettings.Yellow)),
-        ("Blue", nameof(AppSettings.Blue)),
-        ("Magenta", nameof(AppSettings.Magenta)),
-        ("Cyan", nameof(AppSettings.Cyan)),
-        ("White", nameof(AppSettings.White)),
-        ("Bright Black", nameof(AppSettings.BrightBlack)),
-        ("Bright Red", nameof(AppSettings.BrightRed)),
-        ("Bright Green", nameof(AppSettings.BrightGreen)),
-        ("Bright Yellow", nameof(AppSettings.BrightYellow)),
-        ("Bright Blue", nameof(AppSettings.BrightBlue)),
-        ("Bright Magenta", nameof(AppSettings.BrightMagenta)),
-        ("Bright Cyan", nameof(AppSettings.BrightCyan)),
-        ("Bright White", nameof(AppSettings.BrightWhite)),
     ];
 
     private static readonly string[] CommonFonts =

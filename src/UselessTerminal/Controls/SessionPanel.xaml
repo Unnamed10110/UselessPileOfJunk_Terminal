@@ -19,25 +19,35 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
-                        <StackPanel>
-                            <DockPanel LastChildFill="True" HorizontalAlignment="Stretch">
-                                <ToggleButton x:Name="Expander" Width="20" Height="20" DockPanel.Dock="Left"
-                                              Margin="0,0,2,0" VerticalAlignment="Center"
-                                              Background="Transparent" BorderThickness="0"
-                                              Focusable="False"
-                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-                                    <TextBlock x:Name="ExpanderGlyph" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets"
-                                               FontSize="10" Foreground="#888888" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                </ToggleButton>
-                                <Border x:Name="Bd" HorizontalAlignment="Stretch" Background="Transparent">
-                                    <ContentPresenter x:Name="PART_Header"
-                                                      HorizontalAlignment="Stretch"
-                                                      ContentSource="Header" />
-                                </Border>
-                            </DockPanel>
-                            <ItemsPresenter x:Name="ItemsHost" Margin="12,0,0,0" />
-                        </StackPanel>
+                        <!-- Column 0 = expand chevron; column 1 = header full width; nested ItemsPresenter is indented for hierarchy. -->
+                        <Grid HorizontalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" MinWidth="0" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleButton x:Name="Expander" Grid.Row="0" Grid.Column="0"
+                                          Width="18" Height="20"
+                                          VerticalAlignment="Center"
+                                          Background="Transparent" BorderThickness="0"
+                                          Focusable="False"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <TextBlock x:Name="ExpanderGlyph" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets"
+                                           FontSize="10" Foreground="#888888" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </ToggleButton>
+                            <Border x:Name="Bd" Grid.Row="0" Grid.Column="1"
+                                    HorizontalAlignment="Stretch" Background="Transparent">
+                                <ContentPresenter x:Name="PART_Header"
+                                                  HorizontalAlignment="Stretch"
+                                                  ContentSource="Header" />
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Grid.Column="1"
+                                            Margin="14,0,0,0" />
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="HasItems" Value="False">
                                 <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
@@ -55,9 +65,10 @@
         </Style>
         <HierarchicalDataTemplate DataType="{x:Type local:SessionTreeNode}" ItemsSource="{Binding Children}">
             <Grid HorizontalAlignment="Stretch" MinWidth="0">
-                <!-- Folder row -->
-                <Grid MinHeight="52" HorizontalAlignment="Stretch" VerticalAlignment="Center">
-                    <Grid.ContextMenu>
+                <!-- Folder row: same horizontal padding as session cards; expand/collapse is the TreeView chevron only. -->
+                <Border MinHeight="52" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                        CornerRadius="4" Padding="8,6" BorderThickness="1" BorderBrush="#2a2a2a">
+                    <Border.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                             <MenuItem Header="New session in folder" Click="ContextFolder_AddSession_Click"
                                       Tag="{Binding Folder.Id}" />
@@ -72,9 +83,9 @@
                             <MenuItem Header="Delete folder" Click="ContextFolder_Delete_Click"
                                       Tag="{Binding Folder.Id}" />
                         </ContextMenu>
-                    </Grid.ContextMenu>
-                    <Grid.Style>
-                        <Style TargetType="Grid">
+                    </Border.ContextMenu>
+                    <Border.Style>
+                        <Style TargetType="Border">
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
@@ -84,64 +95,39 @@
                                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
                                              Value="True">
                                     <Setter Property="Background" Value="#252a32" />
+                                    <Setter Property="BorderBrush" Value="#444444" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </Grid.Style>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MinWidth="0" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                               Foreground="#00e5ff" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <!-- Matches parent TreeViewItem expand state when the folder has children -->
-                    <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets" FontSize="11"
-                               Foreground="#aaaaaa" Margin="0,0,8,0" VerticalAlignment="Center"
-                               ToolTip="Folder contents hidden">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Text" Value="&#xE76C;" />
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                 Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                       Value="True" />
-                                            <Condition Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                       Value="True" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter Property="Text" Value="&#xE70D;" />
-                                        <Setter Property="ToolTip" Value="Folder contents visible" />
-                                    </MultiDataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                    <TextBlock Grid.Column="2" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
-                               Foreground="#ffffff" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                               TextWrapping="NoWrap" />
-                    <StackPanel Grid.Column="3" Orientation="Horizontal">
-                        <Button Click="AddSessionInFolder_Click" Tag="{Binding Folder.Id}"
-                                ToolTip="New session in folder" Background="Transparent" BorderThickness="0"
-                                Padding="4,2" Cursor="Hand" Foreground="#888888">
-                            <ui:SymbolIcon Symbol="Add24" FontSize="12" />
-                        </Button>
-                        <Button Click="RenameFolder_Click" Tag="{Binding Folder.Id}"
-                                ToolTip="Rename" Background="Transparent" BorderThickness="0"
-                                Padding="4,2" Cursor="Hand" Foreground="#888888"
-                                Content="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
-                        <Button Click="DeleteFolder_Click" Tag="{Binding Folder.Id}"
-                                ToolTip="Delete folder" Background="Transparent" BorderThickness="0"
-                                Padding="4,2" Cursor="Hand" Foreground="#888888"
-                                Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
-                    </StackPanel>
-                </Grid>
+                    </Border.Style>
+                    <Grid HorizontalAlignment="Stretch" MinWidth="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" MinWidth="0" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                   Foreground="#00e5ff" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="#ffffff" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   TextWrapping="NoWrap" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button Click="AddSessionInFolder_Click" Tag="{Binding Folder.Id}"
+                                    ToolTip="New session in folder" Background="Transparent" BorderThickness="0"
+                                    Padding="4,2" Cursor="Hand" Foreground="#888888">
+                                <ui:SymbolIcon Symbol="Add24" FontSize="12" />
+                            </Button>
+                            <Button Click="RenameFolder_Click" Tag="{Binding Folder.Id}"
+                                    ToolTip="Rename" Background="Transparent" BorderThickness="0"
+                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Content="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
+                            <Button Click="DeleteFolder_Click" Tag="{Binding Folder.Id}"
+                                    ToolTip="Delete folder" Background="Transparent" BorderThickness="0"
+                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
                 <!-- Session row -->
                 <Border CornerRadius="4" Padding="8,6" MinHeight="52" HorizontalAlignment="Stretch"
@@ -296,7 +282,7 @@
 
         <TreeView x:Name="SessionTree" Grid.Row="2"
                   Background="Transparent" BorderThickness="0"
-                  Padding="4"
+                  Padding="0,2,4,4"
                   HorizontalContentAlignment="Stretch"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   ScrollViewer.VerticalScrollBarVisibility="Auto"
