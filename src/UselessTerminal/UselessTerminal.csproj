@@ -8,7 +8,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- Win32 icon resource on UselessTerminal.exe (Explorer, taskbar, Alt+Tab) -->
+    <ApplicationIcon>$(MSBuildProjectDirectory)\Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

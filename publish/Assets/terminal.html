@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="xterm.min.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
+  #wrap { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  #termBg {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    pointer-events: none; z-index: 0; opacity: 0;
+  }
+  #terminal { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar { width: 8px; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+  .xterm-viewport { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .xterm-viewport:hover { scrollbar-color: rgba(255,255,255,0.12) transparent; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="termBg"></div>
+  <div id="terminal"></div>
+</div>
+<script src="xterm.min.js"></script>
+<script src="xterm-addon-fit.min.js"></script>
+<script src="xterm-addon-webgl.min.js"></script>
+<script src="xterm-addon-unicode11.min.js"></script>
+<script>
+(function() {
+    const term = new Terminal({
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        fontSize: 14,
+        fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff',
+            cursor: '#ffffff',
+            cursorAccent: '#000000',
+            selectionBackground: '#ffffff',
+            selectionForeground: '#000000',
+            black: '#000000',
+            red: '#ff2b7b',
+            green: '#b4fb00',
+            yellow: '#ffef5c',
+            blue: '#6be5ff',
+            magenta: '#c47cff',
+            cyan: '#56ffef',
+            white: '#ffffff',
+            brightBlack: '#888888',
+            brightRed: '#ff5c9a',
+            brightGreen: '#ccff33',
+            brightYellow: '#fffa80',
+            brightBlue: '#8eedff',
+            brightMagenta: '#d9a3ff',
+            brightCyan: '#80fff5',
+            brightWhite: '#ffffff'
+        },
+        allowProposedApi: true,
+        scrollback: 10000
+    });
+
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    const unicode11Addon = new Unicode11Addon.Unicode11Addon();
+    term.loadAddon(unicode11Addon);
+    term.unicode.activeVersion = '11';
+
+    term.open(document.getElementById('terminal'));
+
+    let webglLoaded = false;
+    try {
+        const webglAddon = new WebglAddon.WebglAddon();
+        webglAddon.onContextLoss(() => { webglAddon.dispose(); });
+        term.loadAddon(webglAddon);
+        webglLoaded = true;
+    } catch (e) {
+        console.warn('WebGL addon failed, using canvas renderer:', e);
+    }
+
+    fitAddon.fit();
+
+    let resizeTimeout;
+    const observer = new ResizeObserver(() => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            fitAddon.fit();
+            sendResize();
+        }, 50);
+    });
+    observer.observe(document.getElementById('terminal'));
+
+    // Input: keyboard -> C#
+    term.onData((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'input', data: data }));
+    });
+
+    term.onBinary((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'binary', data: data }));
+    });
+
+    term.onTitleChange((title) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'title', data: title }));
+    });
+
+    function sendResize() {
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+        }));
+    }
+
+    // Output: C# -> terminal (called via ExecuteScriptAsync)
+    window.termWrite = function(base64) {
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        term.write(bytes);
+    };
+
+    window.termResize = function(cols, rows) {
+        term.resize(cols, rows);
+    };
+
+    window.termFocus = function() {
+        term.focus();
+    };
+
+    window.termClear = function() {
+        term.clear();
+    };
+
+    window.termSetTheme = function(themeJson) {
+        term.options.theme = JSON.parse(themeJson);
+    };
+
+    window.termSetFontSize = function(size) {
+        term.options.fontSize = size;
+        fitAddon.fit();
+    };
+
+    window.termSetFontFamily = function(family) {
+        term.options.fontFamily = family;
+        fitAddon.fit();
+    };
+
+    window.termSetCursorBlink = function(blink) {
+        term.options.cursorBlink = blink;
+    };
+
+    window.termSetCursorStyle = function(style) {
+        term.options.cursorStyle = style;
+    };
+
+    window.termSetScrollback = function(lines) {
+        term.options.scrollback = lines;
+    };
+
+    window.termApplySettingsRaw = function(jsonStr) {
+        const s = JSON.parse(jsonStr);
+        if (s.fontFamily) term.options.fontFamily = s.fontFamily;
+        if (s.fontSize) term.options.fontSize = s.fontSize;
+        if (s.cursorBlink !== undefined) term.options.cursorBlink = s.cursorBlink;
+        if (s.cursorStyle) term.options.cursorStyle = s.cursorStyle;
+        if (s.scrollback) term.options.scrollback = s.scrollback;
+        if (s.theme) {
+            if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+                const t = Object.assign({}, s.theme);
+                t.background = 'rgba(0,0,0,0.82)';
+                term.options.theme = t;
+            } else {
+                term.options.theme = s.theme;
+            }
+        }
+        const bg = document.getElementById('termBg');
+        if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+            bg.style.backgroundImage = 'url(' + JSON.stringify(s.backgroundImageDataUrl) + ')';
+            let op = s.backgroundImageOpacity;
+            if (typeof op !== 'number' || isNaN(op)) op = 0.4;
+            bg.style.opacity = String(Math.max(0, Math.min(1, op)));
+        } else {
+            bg.style.backgroundImage = 'none';
+            bg.style.opacity = '0';
+        }
+        document.body.style.background = s.theme?.background || '#000000';
+        document.getElementById('terminal').style.background = 'transparent';
+        fitAddon.fit();
+    };
+
+    // Signal ready
+    sendResize();
+    term.focus();
+    window.chrome.webview.postMessage(JSON.stringify({ type: 'ready' }));
+})();
+</script>
+</body>
+</html>
