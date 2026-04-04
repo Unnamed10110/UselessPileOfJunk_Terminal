@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Controls.Primitives;
 using UselessTerminal.Controls;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
@@ -16,9 +17,13 @@ namespace UselessTerminal;
 public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 {
     private bool _sessionPanelOpen;
-    private const double SessionPanelWidth = 260;
+    private double _sessionPanelWidth = 260;
     private readonly List<TerminalTabState> _tabs = new();
     private TerminalTabState? _activeTab;
+
+    private TerminalTabState? _tabDragSource;
+    private Point _tabDragMouseDown;
+    private const double TabDragThreshold = 6;
 
     private static readonly string[] TabColors =
     [
@@ -40,13 +45,36 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
 
-        SessionPanel.SessionLaunched += session =>
+        if (ElevationHelper.IsProcessElevated())
+            Title = "Useless Terminal — Administrator";
+
+        SessionPanel.SessionLaunched += (session, runAsAdministrator) =>
         {
+            // When this process is already elevated, ConPTY children inherit the same token — use
+            // embedded tabs only. External UAC launch is only needed when we are not elevated.
+            if (runAsAdministrator && !ElevationHelper.IsProcessElevated())
+            {
+                try
+                {
+                    ElevatedShellLauncher.Launch(session);
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show(
+                        $"Could not start an elevated shell.\n\n{ex.Message}",
+                        "Run as administrator",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                }
+
+                return;
+            }
+
             string command = session.GetFullCommand();
             string? workDir = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? null : session.WorkingDirectory;
             string? startCmd = string.IsNullOrWhiteSpace(session.StartingCommand) ? null : session.StartingCommand;
             string? clr = string.IsNullOrWhiteSpace(session.ColorTag) ? null : session.ColorTag;
-            AddTab(session.Name, command, workDir, startCmd, clr);
+            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true);
         };
 
         SettingsStore.Instance.Load();
@@ -189,14 +217,26 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private void ToggleSessionPanel()
     {
         _sessionPanelOpen = !_sessionPanelOpen;
+        SessionPanelColumn.MinWidth = _sessionPanelOpen ? 160 : 0;
         SessionPanelColumn.Width = _sessionPanelOpen
-            ? new GridLength(SessionPanelWidth)
+            ? new GridLength(_sessionPanelWidth, GridUnitType.Pixel)
             : new GridLength(0);
+        SessionSplitterColumn.Width = _sessionPanelOpen
+            ? new GridLength(5)
+            : new GridLength(0);
+    }
+
+    private void SessionGridSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!_sessionPanelOpen || e.Canceled) return;
+        double w = SessionPanelColumn.ActualWidth;
+        if (w >= 160 && w <= 900)
+            _sessionPanelWidth = w;
     }
 
     // --- Tab Management ---
 
-    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null)
+    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false)
     {
         var container = new Grid { Visibility = Visibility.Collapsed };
         var termControl = new TerminalControl();
@@ -209,7 +249,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             WorkingDirectory = workingDirectory,
             StartingCommand = startingCommand,
             Control = termControl,
-            Container = container
+            Container = container,
+            Renamed = lockTitle
         };
 
         var tabItem = new TabItem
@@ -254,6 +295,119 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             var tab = _tabs[i];
             tab.TabItem.Header = $"{i + 1}  {tab.Title}";
         }
+    }
+
+    private void MoveTab(int fromIndex, int toIndexBeforeRemove)
+    {
+        if (fromIndex < 0 || fromIndex >= _tabs.Count) return;
+        if (toIndexBeforeRemove < 0 || toIndexBeforeRemove > _tabs.Count) return;
+
+        var tab = _tabs[fromIndex];
+        if (toIndexBeforeRemove == fromIndex || toIndexBeforeRemove == fromIndex + 1)
+            return;
+
+        _tabs.RemoveAt(fromIndex);
+        int insertPos = toIndexBeforeRemove > fromIndex ? toIndexBeforeRemove - 1 : toIndexBeforeRemove;
+        _tabs.Insert(insertPos, tab);
+
+        TabStrip.Items.Remove(tab.TabItem);
+        TabStrip.Items.Insert(insertPos, tab.TabItem);
+
+        TerminalHost.Children.Remove(tab.Container);
+        TerminalHost.Children.Insert(insertPos, tab.Container);
+
+        RenumberTabs();
+        TabStrip.SelectedItem = tab.TabItem;
+    }
+
+    private int GetTabInsertIndexFromPoint(Point posInTabStrip)
+    {
+        int n = TabStrip.Items.Count;
+        for (int i = 0; i < n; i++)
+        {
+            if (TabStrip.ItemContainerGenerator.ContainerFromIndex(i) is not TabItem ti)
+                continue;
+            if (ti.ActualWidth <= 0) continue;
+            Point topLeft = ti.TranslatePoint(new Point(0, 0), TabStrip);
+            double midX = topLeft.X + ti.ActualWidth / 2;
+            if (posInTabStrip.X < midX)
+                return i;
+        }
+
+        return n;
+    }
+
+    private bool IsPointOverTabHeaders(Point posInTabStrip)
+    {
+        if (_tabs.Count == 0) return false;
+        if (TabStrip.ItemContainerGenerator.ContainerFromIndex(0) is not TabItem first)
+            return posInTabStrip.Y <= 40;
+        double h = first.ActualHeight;
+        if (h <= 0) h = 32;
+        return posInTabStrip.Y <= h + 12;
+    }
+
+    private void TabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragSource = null;
+        if (FindParent<Button>(e.OriginalSource as DependencyObject) is not null)
+            return;
+        if (FindParent<TabItem>(e.OriginalSource as DependencyObject) is not { Tag: TerminalTabState tab })
+            return;
+        _tabDragSource = tab;
+        _tabDragMouseDown = e.GetPosition(null);
+    }
+
+    private void TabStrip_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _tabDragSource == null) return;
+        if ((e.GetPosition(null) - _tabDragMouseDown).Length < TabDragThreshold) return;
+        var data = _tabDragSource;
+        _tabDragSource = null;
+        DragDrop.DoDragDrop(TabStrip, new DataObject(typeof(TerminalTabState), data), DragDropEffects.Move);
+    }
+
+    private void TabStrip_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragSource = null;
+    }
+
+    private void TabStrip_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(TerminalTabState))) return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void TabStrip_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(TerminalTabState))) return;
+        if (e.Data.GetData(typeof(TerminalTabState)) is not TerminalTabState dragged) return;
+
+        var pos = e.GetPosition(TabStrip);
+        if (!IsPointOverTabHeaders(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        int insertIndex = GetTabInsertIndexFromPoint(pos);
+        int fromIndex = _tabs.IndexOf(dragged);
+        if (fromIndex < 0) return;
+
+        MoveTab(fromIndex, insertIndex);
+        e.Handled = true;
+    }
+
+    private static T? FindParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T t) return t;
+            child = VisualTreeHelper.GetParent(child);
+        }
+
+        return null;
     }
 
     private void UpdateTabHeader(TerminalTabState tab)
@@ -425,22 +579,50 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         UpdateTabColorBar(tab);
     }
 
+    private void RefreshAllTabChrome()
+    {
+        foreach (var tab in _tabs)
+            UpdateTabColorBar(tab);
+    }
+
     private void UpdateTabColorBar(TerminalTabState tab)
     {
-        if (string.IsNullOrEmpty(tab.HighlightColor))
+        bool selected = tab.TabItem.IsSelected;
+
+        if (selected)
+        {
+            tab.TabItem.Background = Brushes.White;
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0));
+        }
+        else if (string.IsNullOrEmpty(tab.HighlightColor))
         {
             tab.TabItem.Background = Brushes.Transparent;
-            return;
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+        }
+        else
+        {
+            var color = ParseHexColor(tab.HighlightColor);
+            color.A = 90;
+            tab.TabItem.Background = new SolidColorBrush(color);
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
         }
 
-        var color = ParseHexColor(tab.HighlightColor);
-        color.A = 90;
-        tab.TabItem.Background = new SolidColorBrush(color);
-
         tab.TabItem.ApplyTemplate();
-        var tabBorder = FindNamedChild<System.Windows.Controls.Border>(tab.TabItem, "TabBorder");
-        if (tabBorder is null) return;
-        tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor)) { Opacity = 0.5 };
+        if (FindNamedChild<System.Windows.Controls.Border>(tab.TabItem, "TabBorder") is not { } tabBorder)
+            return;
+
+        tabBorder.Opacity = 1;
+        if (selected)
+        {
+            if (string.IsNullOrEmpty(tab.HighlightColor))
+                tabBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
+            else
+                tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor));
+        }
+        else if (string.IsNullOrEmpty(tab.HighlightColor))
+            tabBorder.BorderBrush = Brushes.Transparent;
+        else
+            tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor)) { Opacity = 0.5 };
     }
 
     private void SplitTab(TerminalTabState tab, Orientation orientation)
@@ -658,7 +840,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void DuplicateTab(TerminalTabState tab)
     {
-        AddTab(tab.Title, tab.Command, tab.WorkingDirectory);
+        AddTab(tab.Title, tab.Command, tab.WorkingDirectory, lockTitle: true);
     }
 
     private void SaveTabAsSession(TerminalTabState tab)
@@ -739,7 +921,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 if (dlg.ShowDialog() == true)
                 {
                     string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                    AddTab(dlg.ResultName, cmd, home, color: shellColor);
+                    AddTab(dlg.ResultName, cmd, home, color: shellColor, lockTitle: true);
                 }
             };
             ShellMenu.Items.Add(item);
@@ -781,6 +963,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (state.IsMaximized)
             WindowState = System.Windows.WindowState.Maximized;
 
+        if (state.SessionPanelWidth >= 160 && state.SessionPanelWidth <= 900)
+            _sessionPanelWidth = state.SessionPanelWidth;
+
         if (state.SessionPanelOpen)
             ToggleSessionPanel();
 
@@ -789,8 +974,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             foreach (var ts in state.Tabs)
             {
                 string? clr = string.IsNullOrEmpty(ts.HighlightColor) ? null : ts.HighlightColor;
-                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr);
-                _tabs[^1].Renamed = ts.Renamed;
+                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
             }
             if (state.ActiveTabIndex >= 0 && state.ActiveTabIndex < _tabs.Count)
                 TabStrip.SelectedItem = _tabs[state.ActiveTabIndex].TabItem;
@@ -811,6 +995,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             Height = RestoreBounds.Height,
             IsMaximized = WindowState == System.Windows.WindowState.Maximized,
             SessionPanelOpen = _sessionPanelOpen,
+            SessionPanelWidth = _sessionPanelWidth,
             ActiveTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : 0
         };
 
@@ -843,6 +1028,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        RefreshAllTabChrome();
         if (TabStrip.SelectedItem is TabItem tabItem && tabItem.Tag is TerminalTabState tab)
             ActivateTab(tab);
     }

@@ -4,8 +4,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:local="clr-namespace:UselessTerminal.Controls"
-    Title="Useless Terminal"
+    Title="Useless Terminal By Unnamed10110"
+    Icon="pack://application:,,,/Assets/app.ico"
     Width="1200" Height="800"
+    MinWidth="480" MinHeight="360"
+    ResizeMode="CanResize"
     WindowStartupLocation="Manual"
     ExtendsContentIntoTitleBar="True"
     WindowBackdropType="None"
@@ -23,13 +26,42 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <ui:TitleBar Grid.Row="0" Title="Useless Terminal" ShowMaximize="True" ShowMinimize="True" />
+        <!-- Title Bar: chrome from TitleBar; centered caption bound to Window.Title (pass-through overlay) -->
+        <Grid Grid.Row="0">
+            <ui:TitleBar x:Name="MainTitleBar"
+                         Title=""
+                         ShowMaximize="True" ShowMinimize="True"
+                         Background="#000000"
+                         Foreground="#ffffff"
+                         ButtonsBackground="#000000"
+                         ButtonsForeground="#ffffff"
+                         Height="16"
+                         MinHeight="30"
+                         MaxHeight="30"
+                         Padding="2,0"
+                         FontSize="12" />
+            <Grid IsHitTestVisible="False">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Foreground="#ffffff"
+                           FontSize="16"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" />
+            </Grid>
+        </Grid>
 
         <!-- Main Content -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SessionPanelColumn" Width="0" />
+                <ColumnDefinition x:Name="SessionPanelColumn" Width="0" MinWidth="0" MaxWidth="900" />
+                <ColumnDefinition x:Name="SessionSplitterColumn" Width="0" MinWidth="0" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -39,8 +71,19 @@
                 <local:SessionPanel x:Name="SessionPanel" />
             </Border>
 
-            <!-- Main Content: Tab Bar + Terminal -->
-            <Grid Grid.Column="1">
+            <GridSplitter x:Name="SessionGridSplitter"
+                          Grid.Column="1"
+                          Width="5" HorizontalAlignment="Stretch"
+                          Background="#333333" BorderThickness="0"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"
+                          Cursor="SizeWE"
+                          DragCompleted="SessionGridSplitter_DragCompleted" />
+
+            <!-- Main Content: Tab Bar + Terminal.
+                 Right/bottom margin keeps a WPF-only strip so WebView2 does not cover the window edge
+                 (HWND would otherwise steal WM_NCHITTEST and block resizing on that side). -->
+            <Grid Grid.Column="2" Margin="0,0,6,6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -91,6 +134,12 @@
                         <TabControl x:Name="TabStrip"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="0" Margin="0"
+                                    AllowDrop="True"
+                                    PreviewMouseLeftButtonDown="TabStrip_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="TabStrip_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="TabStrip_PreviewMouseLeftButtonUp"
+                                    PreviewDragOver="TabStrip_PreviewDragOver"
+                                    Drop="TabStrip_Drop"
                                     SelectionChanged="TabStrip_SelectionChanged">
                             <TabControl.ItemContainerStyle>
                                 <Style TargetType="TabItem">
@@ -118,17 +167,25 @@
                                                                 Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
                                                                 VerticalAlignment="Center" />
                                                         <ContentPresenter ContentSource="Header"
-                                                                          VerticalAlignment="Center" />
+                                                                          VerticalAlignment="Center"
+                                                                          TextElement.Foreground="{TemplateBinding Foreground}" />
                                                     </DockPanel>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.45" />
-                                                        <Setter TargetName="TabBorder" Property="BorderBrush" Value="#555555" />
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="1" />
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#000000" />
                                                     </Trigger>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.7" />
+                                                    <Trigger Property="IsSelected" Value="False">
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#888888" />
                                                     </Trigger>
+                                                    <MultiTrigger>
+                                                        <MultiTrigger.Conditions>
+                                                            <Condition Property="IsMouseOver" Value="True" />
+                                                            <Condition Property="IsSelected" Value="False" />
+                                                        </MultiTrigger.Conditions>
+                                                        <Setter TargetName="TabBorder" Property="Opacity" Value="0.75" />
+                                                    </MultiTrigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </Setter.Value>

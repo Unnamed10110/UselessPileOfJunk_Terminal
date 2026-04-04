@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows.Controls;
@@ -8,6 +10,8 @@ namespace UselessTerminal.Controls;
 
 public sealed partial class TerminalControl : UserControl, IDisposable
 {
+    private const int MaxBackgroundImageBytes = 15 * 1024 * 1024;
+
     private ConPtySession? _session;
     private bool _webViewReady;
     private readonly Queue<byte[]> _pendingOutput = new();
@@ -160,26 +164,65 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public void ApplySettings(Models.AppSettings settings)
     {
         if (!_webViewReady || _disposed) return;
-        string themeJson = settings.ToThemeJson();
-        string settingsJson = System.Text.Json.JsonSerializer.Serialize(new
+
+        string? dataUrl = null;
+        string path = settings.ShellBackgroundImagePath?.Trim() ?? "";
+        if (!string.IsNullOrEmpty(path) && File.Exists(path))
         {
-            fontFamily = settings.FontFamily,
-            fontSize = settings.FontSize,
-            cursorBlink = settings.CursorBlink,
-            cursorStyle = settings.CursorStyle,
-            scrollback = settings.Scrollback,
-            theme = System.Text.Json.JsonSerializer.Deserialize<object>(themeJson)
-        });
-        string escaped = settingsJson.Replace("'", "\\'");
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(path);
+                if (bytes.Length <= MaxBackgroundImageBytes)
+                {
+                    string mime = GuessImageMime(path);
+                    dataUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+                }
+            }
+            catch { }
+        }
+
+        string themeJson = settings.ToThemeJson();
+        var themeEl = JsonSerializer.Deserialize<JsonElement>(themeJson);
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["fontFamily"] = settings.FontFamily,
+            ["fontSize"] = settings.FontSize,
+            ["cursorBlink"] = settings.CursorBlink,
+            ["cursorStyle"] = settings.CursorStyle,
+            ["scrollback"] = settings.Scrollback,
+            ["theme"] = themeEl,
+            ["backgroundImageDataUrl"] = dataUrl ?? "",
+            ["backgroundImageOpacity"] = settings.ShellBackgroundImageOpacity,
+            ["useBackgroundImage"] = !string.IsNullOrEmpty(dataUrl),
+        };
+
+        string innerJson = JsonSerializer.Serialize(payload);
         Dispatcher.InvokeAsync(async () =>
         {
             try
             {
                 if (!_disposed)
-                    await WebView.ExecuteScriptAsync($"window.termApplySettings('{escaped}')");
+                {
+                    string arg = JsonSerializer.Serialize(innerJson);
+                    await WebView.ExecuteScriptAsync($"window.termApplySettingsRaw({arg})");
+                }
             }
             catch { }
         });
+    }
+
+    private static string GuessImageMime(string filePath)
+    {
+        return Path.GetExtension(filePath).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            _ => "image/png",
+        };
     }
 
     public void SendCommand(string command)

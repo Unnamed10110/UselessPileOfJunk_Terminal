@@ -5,9 +5,12 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <RootNamespace>UselessTerminal</RootNamespace>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Win32 icon resource on UselessTerminal.exe (Explorer, taskbar, Alt+Tab) -->
+    <ApplicationIcon>$(MSBuildProjectDirectory)\Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +18,14 @@
     <PackageReference Include="WPF-UI" Version="3.0.5" />
   </ItemGroup>
 
+  <!-- WinForms ColorDialog only; do not import WinForms/Drawing into every file (conflicts with WPF). -->
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

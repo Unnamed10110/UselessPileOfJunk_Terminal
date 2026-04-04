@@ -8,6 +8,7 @@ public sealed class WindowState
     public double Height { get; set; } = 800;
     public bool IsMaximized { get; set; }
     public bool SessionPanelOpen { get; set; }
+    public double SessionPanelWidth { get; set; } = 260;
     public int ActiveTabIndex { get; set; }
     public List<TabState> Tabs { get; set; } = new();
 }

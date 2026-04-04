@@ -17,6 +17,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -29,6 +31,29 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,0,0,12">
+            <TextBlock Text="Description" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBox x:Name="DescriptionBox" FontSize="13" Padding="8,6"
+                     MinHeight="64" MaxHeight="140" AcceptsReturn="True"
+                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                     Background="#000000" Foreground="#ffffff"
+                     BorderBrush="#555555" BorderThickness="1" />
+            <TextBlock Text="Shown as tooltip when hovering the session in the list."
+                       FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Margin="0,0,0,12">
+            <TextBlock Text="Preset shell" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <ComboBox x:Name="PresetShellCombo"
+                      SelectionChanged="PresetShellCombo_SelectionChanged"
+                      Background="#000000" Foreground="#ffffff"
+                      BorderBrush="#555555" BorderThickness="1"
+                      Padding="6,4" FontSize="13"
+                      MaxDropDownHeight="240" />
+            <TextBlock Text="Pick a detected shell to fill path, arguments, and color; use Custom to edit manually."
+                       FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,0,0,12">
             <TextBlock Text="Shell Path" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseShell_Click"
@@ -41,14 +66,14 @@
             </DockPanel>
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Margin="0,0,0,12">
+        <StackPanel Grid.Row="4" Margin="0,0,0,12">
             <TextBlock Text="Arguments" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <TextBox x:Name="ArgumentsBox" FontSize="13" Padding="8,6"
                      Background="#000000" Foreground="#ffffff"
                      BorderBrush="#555555" BorderThickness="1" />
         </StackPanel>
 
-        <StackPanel Grid.Row="3" Margin="0,0,0,12">
+        <StackPanel Grid.Row="5" Margin="0,0,0,12">
             <TextBlock Text="Working Directory" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseDir_Click"
@@ -61,7 +86,7 @@
             </DockPanel>
         </StackPanel>
 
-        <StackPanel Grid.Row="4" Margin="0,0,0,12">
+        <StackPanel Grid.Row="6" Margin="0,0,0,12">
             <TextBlock Text="Starting Command" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <TextBox x:Name="StartingCommandBox" FontSize="13" Padding="8,6"
                      Background="#000000" Foreground="#ffffff"
@@ -70,7 +95,7 @@
                        FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
         </StackPanel>
 
-        <StackPanel Grid.Row="5" Margin="0,0,0,12">
+        <StackPanel Grid.Row="7" Margin="0,0,0,12">
             <TextBlock Text="Color Tag" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <WrapPanel>
                 <RadioButton x:Name="ColorBlue" Tag="#00ff44" Margin="0,0,6,0"
@@ -96,7 +121,7 @@
         </StackPanel>
 
         <!-- Buttons -->
-        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Click="Cancel_Click" Padding="16,8"
                     Margin="0,0,8,0" Background="#000000" Foreground="#ffffff"
                     BorderBrush="#555555" BorderThickness="1" />

@@ -3,9 +3,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Settings"
-    Width="560" Height="660"
+    Width="560" Height="760"
+    MinWidth="480" MinHeight="560"
     WindowStartupLocation="CenterOwner"
-    ResizeMode="NoResize"
+    ResizeMode="CanResize"
     Background="#000000"
     Foreground="#ffffff">
 
@@ -64,11 +65,48 @@
                              BorderBrush="#555555" BorderThickness="1" />
                 </DockPanel>
 
+                <Border Height="1" Background="#333333" Margin="0,10,0,16" />
+
+                <TextBlock Text="S H E L L   B A C K G R O U N D" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                           Margin="0,0,0,10" />
+
+                <DockPanel Margin="0,0,0,8">
+                    <TextBlock Text="Image" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ShellBgPathBox" Grid.Column="0" Padding="8,5" IsReadOnly="True"
+                                 Background="#0a0a0a" Foreground="#cccccc"
+                                 BorderBrush="#555555" BorderThickness="1" />
+                        <Button Grid.Column="1" Content="Browse…" Click="BrowseShellBg_Click" Margin="8,0,0,0"
+                                Padding="12,5" Background="#000000" Foreground="#ffffff"
+                                BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                        <Button Grid.Column="2" Content="Clear" Click="ClearShellBg_Click" Margin="8,0,0,0"
+                                Padding="12,5" Background="#000000" Foreground="#888888"
+                                BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                    </Grid>
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="Image opacity" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="ShellBgOpacitySlider" Width="200" Minimum="0" Maximum="100"
+                                ValueChanged="ShellBgOpacitySlider_ValueChanged"
+                                VerticalAlignment="Center" />
+                        <TextBlock x:Name="ShellBgOpacityLabel" Width="44" Foreground="#ffffff"
+                                   VerticalAlignment="Center" TextAlignment="Right" Margin="8,0,0,0" />
+                    </StackPanel>
+                </DockPanel>
+
                 <Border Height="1" Background="#333333" Margin="0,10,0,20" />
 
-                <!-- Background & Foreground -->
-                <TextBlock Text="C O L O R S" FontSize="11" FontWeight="Bold" Foreground="#888888"
-                           Margin="0,0,0,10" />
+                <TextBlock Text="P R O M P T   &amp;   O U T P U T" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Maps to ANSI colors (red, green, yellow, …) so shells and prompts follow the same roles."
+                           FontSize="10" Foreground="#555555" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                 <UniformGrid x:Name="ColorGrid" Columns="2" Margin="0,0,0,10">
                     <!-- Populated in code-behind -->

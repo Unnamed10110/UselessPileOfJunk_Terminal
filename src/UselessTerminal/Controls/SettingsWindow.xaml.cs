@@ -1,7 +1,11 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Shapes;
+using Microsoft.Win32;
+using FormsDialogResult = System.Windows.Forms.DialogResult;
+using WinFormsColorDialog = System.Windows.Forms.ColorDialog;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
 
@@ -13,40 +17,18 @@ public partial class SettingsWindow : Window
 
     private static readonly (string Label, string Property)[] ColorEntries =
     [
-        ("Background", nameof(AppSettings.Background)),
-        ("Foreground", nameof(AppSettings.Foreground)),
-        ("Cursor", nameof(AppSettings.Cursor)),
+        ("Terminal background", nameof(AppSettings.TerminalBackground)),
+        ("Default text & prompt", nameof(AppSettings.TextDefault)),
+        ("Muted / secondary", nameof(AppSettings.TextMuted)),
+        ("Errors", nameof(AppSettings.ColorError)),
+        ("Warnings", nameof(AppSettings.ColorWarning)),
+        ("Commands & success", nameof(AppSettings.ColorCommand)),
+        ("Info / messages", nameof(AppSettings.ColorMessage)),
+        ("Paths & links", nameof(AppSettings.ColorAccent)),
+        ("Highlights", nameof(AppSettings.ColorHighlight)),
+        ("Cursor", nameof(AppSettings.CursorColor)),
         ("Selection BG", nameof(AppSettings.SelectionBackground)),
         ("Selection FG", nameof(AppSettings.SelectionForeground)),
-        ("Black", nameof(AppSettings.Black)),
-        ("Red", nameof(AppSettings.Red)),
-        ("Green", nameof(AppSettings.Green)),
-        ("Yellow", nameof(AppSettings.Yellow)),
-        ("Blue", nameof(AppSettings.Blue)),
-        ("Magenta", nameof(AppSettings.Magenta)),
-        ("Cyan", nameof(AppSettings.Cyan)),
-        ("White", nameof(AppSettings.White)),
-        ("Bright Black", nameof(AppSettings.BrightBlack)),
-        ("Bright Red", nameof(AppSettings.BrightRed)),
-        ("Bright Green", nameof(AppSettings.BrightGreen)),
-        ("Bright Yellow", nameof(AppSettings.BrightYellow)),
-        ("Bright Blue", nameof(AppSettings.BrightBlue)),
-        ("Bright Magenta", nameof(AppSettings.BrightMagenta)),
-        ("Bright Cyan", nameof(AppSettings.BrightCyan)),
-        ("Bright White", nameof(AppSettings.BrightWhite)),
-    ];
-
-    private static readonly string[] CommonFonts =
-    [
-        "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
-        "'JetBrains Mono', Consolas, monospace",
-        "'Fira Code', Consolas, monospace",
-        "'Source Code Pro', Consolas, monospace",
-        "Consolas, monospace",
-        "'Courier New', monospace",
-        "'Hack', Consolas, monospace",
-        "'IBM Plex Mono', Consolas, monospace",
-        "'Iosevka', Consolas, monospace",
     ];
 
     public SettingsWindow(AppSettings settings)
@@ -58,8 +40,9 @@ public partial class SettingsWindow : Window
 
     private void PopulateFields()
     {
-        foreach (string font in CommonFonts)
-            FontFamilyBox.Items.Add(font);
+        FontFamilyBox.Items.Clear();
+        foreach (var ff in Fonts.SystemFontFamilies.OrderBy(f => f.Source))
+            FontFamilyBox.Items.Add(ff.Source);
         FontFamilyBox.Text = _settings.FontFamily;
 
         FontSizeSlider.Value = _settings.FontSize;
@@ -74,7 +57,32 @@ public partial class SettingsWindow : Window
         CursorBlinkBox.IsChecked = _settings.CursorBlink;
         ScrollbackBox.Text = _settings.Scrollback.ToString();
 
+        ShellBgPathBox.Text = _settings.ShellBackgroundImagePath;
+        ShellBgOpacitySlider.Value = Math.Clamp(_settings.ShellBackgroundImageOpacity * 100, 0, 100);
+        ShellBgOpacityLabel.Text = $"{(int)ShellBgOpacitySlider.Value}%";
+
         BuildColorGrid();
+    }
+
+    private void ShellBgOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (ShellBgOpacityLabel is not null)
+            ShellBgOpacityLabel.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void BrowseShellBg_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|All files|*.*",
+        };
+        if (dlg.ShowDialog() == true)
+            ShellBgPathBox.Text = dlg.FileName;
+    }
+
+    private void ClearShellBg_Click(object sender, RoutedEventArgs e)
+    {
+        ShellBgPathBox.Text = "";
     }
 
     private void BuildColorGrid()
@@ -98,7 +106,8 @@ public partial class SettingsWindow : Window
                 Background = new SolidColorBrush(ParseColor(colorVal)),
                 Margin = new Thickness(0, 0, 8, 0),
                 Cursor = System.Windows.Input.Cursors.Hand,
-                Tag = propName
+                Tag = propName,
+                ToolTip = "Click to open color palette"
             };
 
             var textBox = new TextBox
@@ -116,6 +125,11 @@ public partial class SettingsWindow : Window
             };
 
             textBox.TextChanged += ColorTextBox_Changed;
+            swatch.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                OpenColorPalette(propName, swatch, textBox);
+            };
 
             var lbl = new TextBlock
             {
@@ -159,6 +173,41 @@ public partial class SettingsWindow : Window
         catch { }
     }
 
+    private void OpenColorPalette(string propName, Border swatch, System.Windows.Controls.TextBox hexBox)
+    {
+        var info = typeof(AppSettings).GetProperty(propName);
+        if (info is null) return;
+
+        string current = (string)info.GetValue(_settings)!;
+        System.Windows.Media.Color wpfColor;
+        try { wpfColor = ParseColor(current); }
+        catch { wpfColor = Colors.White; }
+
+        var dlg = new WinFormsColorDialog
+        {
+            Color = System.Drawing.Color.FromArgb(wpfColor.R, wpfColor.G, wpfColor.B),
+            FullOpen = true,
+            SolidColorOnly = false,
+        };
+
+        var owner = new WpfWin32Window(this);
+        if (dlg.ShowDialog(owner) != FormsDialogResult.OK)
+            return;
+
+        System.Drawing.Color d = dlg.Color;
+        string hex = $"#{d.R:X2}{d.G:X2}{d.B:X2}";
+        info.SetValue(_settings, hex);
+        swatch.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(d.R, d.G, d.B));
+        hexBox.Text = hex;
+    }
+
+    private sealed class WpfWin32Window : System.Windows.Forms.IWin32Window
+    {
+        public IntPtr Handle { get; }
+        public WpfWin32Window(Window window) =>
+            Handle = new WindowInteropHelper(window).EnsureHandle();
+    }
+
     private void FontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (FontSizeLabel is not null)
@@ -180,6 +229,11 @@ public partial class SettingsWindow : Window
         if (int.TryParse(ScrollbackBox.Text, out int sb) && sb > 0)
             _settings.Scrollback = sb;
 
+        _settings.ShellBackgroundImagePath = ShellBgPathBox.Text.Trim();
+        _settings.ShellBackgroundImageOpacity = Math.Clamp(ShellBgOpacitySlider.Value / 100.0, 0, 1);
+
+        SyncColorsFromGridIntoSettings();
+
         SettingsStore.Instance.Apply(_settings);
         DialogResult = true;
         Close();
@@ -191,7 +245,32 @@ public partial class SettingsWindow : Window
         Close();
     }
 
-    private static Color ParseColor(string hex)
+    /// <summary>
+    /// Ensures every visible hex field is written to <see cref="_settings"/> before save
+    /// (covers edge cases where TextChanged did not update the model).
+    /// </summary>
+    private void SyncColorsFromGridIntoSettings()
+    {
+        var type = typeof(AppSettings);
+        foreach (object? row in ColorGrid.Children)
+        {
+            if (row is not DockPanel panel) continue;
+            foreach (object? child in panel.Children)
+            {
+                if (child is not TextBox tb || tb.Tag is not string propName) continue;
+                string val = tb.Text.Trim();
+                if (!val.StartsWith('#') || (val.Length != 7 && val.Length != 4)) continue;
+                try
+                {
+                    _ = ParseColor(val);
+                    type.GetProperty(propName)?.SetValue(_settings, val);
+                }
+                catch { /* skip invalid */ }
+            }
+        }
+    }
+
+    private static System.Windows.Media.Color ParseColor(string hex)
     {
         hex = hex.TrimStart('#');
         if (hex.Length == 3)
@@ -199,6 +278,6 @@ public partial class SettingsWindow : Window
         byte r = Convert.ToByte(hex[..2], 16);
         byte g = Convert.ToByte(hex[2..4], 16);
         byte b = Convert.ToByte(hex[4..6], 16);
-        return Color.FromRgb(r, g, b);
+        return System.Windows.Media.Color.FromRgb(r, g, b);
     }
 }

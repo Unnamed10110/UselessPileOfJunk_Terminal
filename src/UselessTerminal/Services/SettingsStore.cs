@@ -29,7 +29,10 @@ public sealed class SettingsStore
             if (File.Exists(SettingsPath))
             {
                 string json = File.ReadAllText(SettingsPath);
-                Current = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new();
+                using var doc = JsonDocument.Parse(json);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new();
+                AppSettingsLegacyMigration.ApplyIfNeeded(doc.RootElement, settings);
+                Current = settings;
             }
         }
         catch
