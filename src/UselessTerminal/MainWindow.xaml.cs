@@ -592,14 +592,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (selected)
         {
             tab.TabItem.Background = Brushes.White;
-            if (string.IsNullOrEmpty(tab.HighlightColor))
-                tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0));
-            else
-            {
-                var rgb = ParseHexColor(tab.HighlightColor);
-                tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(
-                    (byte)(255 - rgb.R), (byte)(255 - rgb.G), (byte)(255 - rgb.B)));
-            }
+            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0));
         }
         else if (string.IsNullOrEmpty(tab.HighlightColor))
         {

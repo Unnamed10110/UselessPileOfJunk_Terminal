@@ -170,7 +170,7 @@
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
                                                         <Setter TargetName="TabBorder" Property="Opacity" Value="1" />
-                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#333333" />
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#000000" />
                                                     </Trigger>
                                                     <Trigger Property="IsSelected" Value="False">
                                                         <Setter TargetName="CloseBtn" Property="Foreground" Value="#888888" />
