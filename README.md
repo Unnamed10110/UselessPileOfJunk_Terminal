@@ -6,10 +6,16 @@ A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, f
 
 - **GPU-accelerated terminal** via xterm.js WebGL renderer in WebView2
 - **ConPTY backend** for native Windows pseudo-console support
-- **Tabbed interface** with close buttons, shell selector dropdown
+- **Tabbed interface** with close buttons, shell selector dropdown, and optional per-tab highlight colors (active tab uses a white background with black text)
 - **Session panel** (Ctrl+B) for saving, editing, and launching terminal sessions
+- **Session folders**: organize sessions in a tree; drag-and-drop to reorder or move between folders and root; expand/collapse with folder row affordances
+- **Session import/export** (JSON) and **import from Windows Terminal** profiles
 - **Auto-detects shells**: PowerShell 7, Windows PowerShell, CMD, WSL distros, Git Bash
-- **Windows Terminal profile import** from WT settings.json
+- **Settings** (`settings.json` in `%APPDATA%/UselessTerminal/`):
+  - **Prompt & output colors** — semantic colors (errors, warnings, commands, messages, paths, etc.) mapped to the xterm ANSI theme so shells and prompts stay readable
+  - **Color picker** — Windows color dialog for each color entry (with hex editing still supported)
+  - **Font** — choose from **all installed system fonts** in the family dropdown (editable for custom stacks)
+  - Font size, cursor style/blink, scrollback, optional shell background image + opacity
 - **Dark theme** with Mica backdrop via WPF-UI (Fluent design)
 
 ## Keyboard Shortcuts
@@ -24,6 +30,32 @@ A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, f
 | Ctrl+1-9 | Switch to tab N |
 | Ctrl+Shift+N | New session dialog |
 
+## Usage
+- Terminal appearence
+
+![View](UselessTerminal_04_04_2026_16_09_09.png)
+
+
+- Add any default shell
+
+![Default shell](UselessTerminal_04_04_2026_16_11_45.gif)
+
+- Tab options
+
+![tab options](UselessTerminal_04_04_2026_16_12_57.png)
+
+- Terminal Settings
+
+![terminal settings](UselessTerminal_04_04_2026_16_14_14.png)
+
+- Custom new session
+
+![new custom session](UselessTerminal_04_04_2026_16_16_59.gif)
+
+- Start command example
+
+![custom session utility](UselessTerminal_04_04_2026_16_25_48.gif)
+
 ## Requirements
 
 - Windows 10 version 1809+ (for ConPTY)
@@ -37,11 +69,15 @@ dotnet build UselessTerminal.sln -c Debug
 dotnet run --project src/UselessTerminal
 ```
 
+### Standalone publish (repository root)
+
+From the repo root, `build.bat` publishes a **self-contained** `win-x64` app to the `publish` folder (see script for options).
+
 ## Architecture
 
 ```
 WPF App (Fluent theme via WPF-UI)
-├── Session Panel (XAML sidebar)
+├── Session Panel (XAML sidebar, tree + folders)
 ├── Tab Bar (custom TabControl)
 └── Terminal Panes
     └── WebView2 Control
@@ -54,4 +90,9 @@ WPF App (Fluent theme via WPF-UI)
 - **UI Framework**: WPF + [WPF-UI](https://github.com/lepoco/wpfui) (Fluent design system)
 - **Terminal Renderer**: [xterm.js](https://xtermjs.org/) v5 with WebGL addon
 - **Shell Backend**: Windows ConPTY via direct P/Invoke
-- **Session Storage**: JSON in `%APPDATA%/UselessTerminal/sessions.json`
+- **Session storage**: JSON in `%APPDATA%/UselessTerminal/sessions.json` (sessions + folders)
+
+## Credits
+
+- **Developer:** Unnamed10110  
+- **Contact:** [trojan.v6@gmail.com](mailto:trojan.v6@gmail.com) · [sergiobritos10110@gmail.com](mailto:sergiobritos10110@gmail.com) (secondary)
