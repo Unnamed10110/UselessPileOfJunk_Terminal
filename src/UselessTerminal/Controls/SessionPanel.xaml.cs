@@ -14,10 +14,17 @@ namespace UselessTerminal.Controls;
 public sealed partial class SessionPanel : UserControl
 {
     private const double DragThreshold = 6;
+    /// <summary>Drag/drop payload: ordered session ids (multi-select).</summary>
+    private const string SessionDragIdsFormat = "UselessTerminal.SessionIds";
 
     private readonly SessionStore _store = new();
+    private readonly HashSet<string> _selectedSessionIds = new(StringComparer.OrdinalIgnoreCase);
     private SessionTreeNode? _dragSource;
     private Point _mouseDown;
+    /// <summary>While true, ignore SelectedItemChanged so drag-hover does not collapse multi-select.</summary>
+    private bool _isDragInProgress;
+    /// <summary>Session ids being dragged; valid until DoDragDrop returns (Drop runs while this is set).</summary>
+    private List<string>? _dragSessionIdsSnapshot;
 
     /// <summary>Second argument: true = elevated external console (UAC), false = embedded terminal tab.</summary>
     public event Action<SavedSession, bool>? SessionLaunched;
@@ -28,6 +35,63 @@ public sealed partial class SessionPanel : UserControl
         _store.Load();
         _store.SeedDefaults();
         RefreshList();
+    }
+
+    private void SessionTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object?> e)
+    {
+        if (_isDragInProgress)
+            return;
+
+        if (SessionTree.SelectedItem is SessionTreeNode { Kind: SessionTreeNodeKind.Session, Session: { } s })
+        {
+            _selectedSessionIds.Clear();
+            _selectedSessionIds.Add(s.Id);
+            UpdateMultiSelectUi();
+        }
+        else if (SessionTree.SelectedItem is SessionTreeNode { Kind: SessionTreeNodeKind.Folder })
+        {
+            _selectedSessionIds.Clear();
+            UpdateMultiSelectUi();
+        }
+    }
+
+    private void UpdateMultiSelectUi()
+    {
+        foreach (var node in EnumerateSessionNodes(SessionTree.Items))
+        {
+            if (node.Kind == SessionTreeNodeKind.Session && node.Session is not null)
+                node.IsMultiSelected = _selectedSessionIds.Contains(node.Session.Id);
+        }
+    }
+
+    private static IEnumerable<SessionTreeNode> EnumerateSessionNodes(System.Collections.IEnumerable items)
+    {
+        foreach (object? o in items)
+        {
+            if (o is not SessionTreeNode n) continue;
+            yield return n;
+            foreach (var c in EnumerateSessionNodes(n.Children))
+                yield return c;
+        }
+    }
+
+    private IReadOnlyList<SavedSession> GetDragSessions(SessionTreeNode node)
+    {
+        if (node.Kind != SessionTreeNodeKind.Session || node.Session is null)
+            return Array.Empty<SavedSession>();
+
+        if (_selectedSessionIds.Count > 0 && _selectedSessionIds.Contains(node.Session.Id))
+        {
+            return _selectedSessionIds
+                .Select(id => _store.FindById(id))
+                .Where(s => s is not null)
+                .Cast<SavedSession>()
+                .OrderBy(s => s.FolderId ?? "")
+                .ThenBy(s => s.SortOrder)
+                .ToList();
+        }
+
+        return new[] { node.Session };
     }
 
     public void TriggerAddSession() => AddSession_Click(this, new RoutedEventArgs());
@@ -65,6 +129,7 @@ public sealed partial class SessionPanel : UserControl
 
         if (string.IsNullOrWhiteSpace(filter))
             Dispatcher.BeginInvoke(ExpandFolderNodesWithChildren, DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(UpdateMultiSelectUi, DispatcherPriority.Loaded);
     }
 
     private void ExpandFolderNodesWithChildren()
@@ -139,6 +204,31 @@ public sealed partial class SessionPanel : UserControl
             return;
         if (FindParent<TreeViewItem>(e.OriginalSource as DependencyObject) is not { DataContext: SessionTreeNode node })
             return;
+
+        if (node.Kind == SessionTreeNodeKind.Session && node.Session is not null)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            {
+                if (_selectedSessionIds.Contains(node.Session.Id))
+                    _selectedSessionIds.Remove(node.Session.Id);
+                else
+                    _selectedSessionIds.Add(node.Session.Id);
+                UpdateMultiSelectUi();
+                e.Handled = true;
+            }
+            else
+            {
+                _selectedSessionIds.Clear();
+                _selectedSessionIds.Add(node.Session.Id);
+                UpdateMultiSelectUi();
+            }
+        }
+        else if (node.Kind == SessionTreeNodeKind.Folder)
+        {
+            _selectedSessionIds.Clear();
+            UpdateMultiSelectUi();
+        }
+
         _dragSource = node;
         _mouseDown = e.GetPosition(null);
     }
@@ -150,7 +240,33 @@ public sealed partial class SessionPanel : UserControl
         if ((pos - _mouseDown).Length < DragThreshold) return;
         var data = _dragSource;
         _dragSource = null;
-        DragDrop.DoDragDrop(SessionTree, new DataObject(typeof(SessionTreeNode), data), DragDropEffects.Move);
+
+        _dragSessionIdsSnapshot = null;
+        if (data?.Kind == SessionTreeNodeKind.Session && data.Session is not null)
+        {
+            var sessions = GetDragSessions(data);
+            if (sessions.Count > 0)
+                _dragSessionIdsSnapshot = sessions.Select(s => s.Id).ToList();
+        }
+
+        var payload = new DataObject();
+        payload.SetData(typeof(SessionTreeNode), data);
+        if (_dragSessionIdsSnapshot is { Count: > 0 })
+        {
+            // Pipe-separated string round-trips reliably in WPF IDataObject (string[] often does not).
+            payload.SetData(SessionDragIdsFormat, string.Join('|', _dragSessionIdsSnapshot));
+        }
+
+        _isDragInProgress = true;
+        try
+        {
+            DragDrop.DoDragDrop(SessionTree, payload, DragDropEffects.Move);
+        }
+        finally
+        {
+            _isDragInProgress = false;
+            _dragSessionIdsSnapshot = null;
+        }
     }
 
     private void SessionTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -160,7 +276,7 @@ public sealed partial class SessionPanel : UserControl
 
     private void SessionTree_DragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(SessionTreeNode)))
+        if (e.Data.GetDataPresent(typeof(SessionTreeNode)) || e.Data.GetDataPresent(SessionDragIdsFormat))
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
@@ -169,8 +285,43 @@ public sealed partial class SessionPanel : UserControl
 
     private void SessionTree_Drop(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(typeof(SessionTreeNode))) return;
-        if (e.Data.GetData(typeof(SessionTreeNode)) is not SessionTreeNode src) return;
+        IReadOnlyList<SavedSession>? movingSessions = null;
+        SessionTreeNode? srcNode = e.Data.GetData(typeof(SessionTreeNode)) as SessionTreeNode;
+
+        // Snapshot is taken before DoDragDrop and cleared in finally after Drop — use it first (multi-select).
+        if (_dragSessionIdsSnapshot is { Count: > 0 })
+        {
+            movingSessions = _dragSessionIdsSnapshot
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(id => _store.FindById(id))
+                .Where(s => s is not null)
+                .Cast<SavedSession>()
+                .ToList();
+        }
+        else if (e.Data.GetData(SessionDragIdsFormat) is string pipe && pipe.Length > 0)
+        {
+            movingSessions = pipe.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(id => _store.FindById(id))
+                .Where(s => s is not null)
+                .Cast<SavedSession>()
+                .ToList();
+        }
+        else if (e.Data.GetData(SessionDragIdsFormat) is string[] ids && ids.Length > 0)
+        {
+            movingSessions = ids.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(id => _store.FindById(id))
+                .Where(s => s is not null)
+                .Cast<SavedSession>()
+                .ToList();
+        }
+
+        if (movingSessions is not { Count: > 0 } && srcNode?.Kind == SessionTreeNodeKind.Session && srcNode.Session is not null)
+            movingSessions = GetDragSessions(srcNode);
+
+        bool folderDrag = srcNode?.Kind == SessionTreeNodeKind.Folder;
+        if (movingSessions is not { Count: > 0 } && !folderDrag)
+            return;
 
         var pt = e.GetPosition(SessionTree);
         var hit = VisualTreeHelper.HitTest(SessionTree, pt);
@@ -193,55 +344,69 @@ public sealed partial class SessionPanel : UserControl
         if (item?.DataContext is SessionTreeNode target)
         {
             bool topHalf = e.GetPosition(item).Y < item.ActualHeight * 0.5;
-            ApplyDrop(src, target, topHalf);
+            if (movingSessions is { Count: > 0 })
+                ApplyDropSessions(movingSessions, target, topHalf);
+            else if (srcNode?.Kind == SessionTreeNodeKind.Folder)
+                ApplyDropFolder(srcNode, target, topHalf);
         }
         else
-            ApplyDropRoot(src);
+        {
+            if (movingSessions is { Count: > 0 })
+                ApplyDropSessionsRoot(movingSessions);
+            else if (srcNode?.Kind == SessionTreeNodeKind.Folder)
+                ApplyDropRootFolder(srcNode);
+        }
 
         RefreshList(SearchBox.Text);
     }
 
-    private void ApplyDropRoot(SessionTreeNode src)
+    private void ApplyDropSessionsRoot(IReadOnlyList<SavedSession> moving)
     {
-        if (src.Kind == SessionTreeNodeKind.Session && src.Session is not null)
-            _store.MoveSessionToFolder(src.Session, null);
-        else if (src.Kind == SessionTreeNodeKind.Folder && src.Folder is not null)
+        if (moving.Count == 0) return;
+        _store.MoveSessionsToFolder(moving, null);
+    }
+
+    private void ApplyDropRootFolder(SessionTreeNode src)
+    {
+        if (src.Kind == SessionTreeNodeKind.Folder && src.Folder is not null)
             _store.MoveFolderToRoot(src.Folder);
     }
 
-    private void ApplyDrop(SessionTreeNode src, SessionTreeNode target, bool topHalf)
+    private void ApplyDropSessions(IReadOnlyList<SavedSession> moving, SessionTreeNode target, bool topHalf)
     {
-        if (src.Kind == SessionTreeNodeKind.Session && src.Session is not null)
-        {
-            if (target.Kind == SessionTreeNodeKind.Folder && target.Folder is not null)
-                _store.MoveSessionToFolder(src.Session, target.Folder.Id);
-            else if (target.Kind == SessionTreeNodeKind.Session && target.Session is not null)
-            {
-                if (src.Session.Id == target.Session.Id) return;
-                if (topHalf)
-                    _store.MoveSessionBeforeSibling(src.Session, target.Session);
-                else
-                    _store.MoveSessionAfterSibling(src.Session, target.Session);
-            }
+        if (moving.Count == 0) return;
 
+        if (target.Kind == SessionTreeNodeKind.Folder && target.Folder is not null)
+        {
+            _store.MoveSessionsToFolder(moving, target.Folder.Id);
             return;
         }
 
-        if (src.Kind == SessionTreeNodeKind.Folder && src.Folder is not null)
+        if (target.Kind != SessionTreeNodeKind.Session || target.Session is null) return;
+        if (moving.Any(m => m.Id == target.Session.Id)) return;
+
+        if (topHalf)
+            _store.MoveSessionsBeforeAnchor(moving, target.Session);
+        else
+            _store.MoveSessionsAfterAnchor(moving, target.Session);
+    }
+
+    private void ApplyDropFolder(SessionTreeNode src, SessionTreeNode target, bool topHalf)
+    {
+        if (src.Kind != SessionTreeNodeKind.Folder || src.Folder is null) return;
+
+        if (target.Kind == SessionTreeNodeKind.Folder && target.Folder is not null)
         {
-            if (target.Kind == SessionTreeNodeKind.Folder && target.Folder is not null)
-            {
-                if (src.Folder.Id == target.Folder.Id) return;
-                if (topHalf)
-                    _store.MoveFolderBeforeSibling(src.Folder, target.Folder);
-                else
-                    _store.MoveFolderAfterSibling(src.Folder, target.Folder);
-            }
-            else if (target.Kind == SessionTreeNodeKind.Session && target.Session is not null)
-            {
-                if (target.Session.FolderId == src.Folder.Id) return;
-                _store.MoveFolderToRoot(src.Folder);
-            }
+            if (src.Folder.Id == target.Folder.Id) return;
+            if (topHalf)
+                _store.MoveFolderBeforeSibling(src.Folder, target.Folder);
+            else
+                _store.MoveFolderAfterSibling(src.Folder, target.Folder);
+        }
+        else if (target.Kind == SessionTreeNodeKind.Session && target.Session is not null)
+        {
+            if (target.Session.FolderId == src.Folder.Id) return;
+            _store.MoveFolderToRoot(src.Folder);
         }
     }
 
@@ -373,6 +538,24 @@ public sealed partial class SessionPanel : UserControl
     {
         if (GetTagId(sender) is not string id) return;
         RenameFolderById(id);
+    }
+
+    private void ContextFolder_MoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTagId(sender) is not string id) return;
+        var folder = _store.FindFolderById(id);
+        if (folder is null) return;
+        _store.MoveFolderUp(folder);
+        RefreshList(SearchBox.Text);
+    }
+
+    private void ContextFolder_MoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTagId(sender) is not string id) return;
+        var folder = _store.FindFolderById(id);
+        if (folder is null) return;
+        _store.MoveFolderDown(folder);
+        RefreshList(SearchBox.Text);
     }
 
     private void ContextFolder_Delete_Click(object sender, RoutedEventArgs e)

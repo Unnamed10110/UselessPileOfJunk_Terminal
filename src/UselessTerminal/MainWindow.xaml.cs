@@ -290,11 +290,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void RenumberTabs()
     {
-        for (int i = 0; i < _tabs.Count; i++)
-        {
-            var tab = _tabs[i];
-            tab.TabItem.Header = $"{i + 1}  {tab.Title}";
-        }
+        foreach (var tab in _tabs)
+            UpdateTabHeader(tab);
     }
 
     private void MoveTab(int fromIndex, int toIndexBeforeRemove)
@@ -413,8 +410,27 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private void UpdateTabHeader(TerminalTabState tab)
     {
         int index = _tabs.IndexOf(tab);
-        if (index >= 0)
-            tab.TabItem.Header = $"{index + 1}  {tab.Title}";
+        if (index < 0) return;
+
+        var stack = new StackPanel { Orientation = Orientation.Horizontal };
+        var icon = new System.Windows.Controls.Image
+        {
+            Source = ShellIconLoader.GetIconForCommand(tab.Command),
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(0, 0, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Stretch = Stretch.Uniform,
+        };
+        RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
+        stack.Children.Add(icon);
+        stack.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = $"{index + 1}  {tab.Title}",
+            FontSize = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        tab.TabItem.Header = stack;
     }
 
     private void AddDefaultTab()

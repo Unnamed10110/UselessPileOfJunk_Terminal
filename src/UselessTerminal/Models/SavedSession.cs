@@ -28,9 +28,16 @@ public sealed class SavedSession
 
     public string GetFullCommand()
     {
-        return string.IsNullOrWhiteSpace(Arguments)
-            ? ShellPath
-            : $"\"{ShellPath}\" {Arguments}";
+        if (string.IsNullOrWhiteSpace(Arguments))
+        {
+            string p = ShellPath.Trim();
+            // Match ShellDetector.GetDefaultShell: quote paths with spaces so the first token is the full exe path.
+            if (p.Contains(' ') && !p.StartsWith('"'))
+                return $"\"{p}\"";
+            return p;
+        }
+
+        return $"\"{ShellPath}\" {Arguments}";
     }
 
     public SavedSession Clone() => new()

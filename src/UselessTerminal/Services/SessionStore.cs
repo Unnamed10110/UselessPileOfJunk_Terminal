@@ -250,6 +250,112 @@ public sealed class SessionStore
         Save();
     }
 
+    /// <summary>Moves several sessions into a folder (or root), appending after existing items in stable order.</summary>
+    public void MoveSessionsToFolder(IReadOnlyList<SavedSession> moving, string? folderId)
+    {
+        if (moving.Count == 0) return;
+        folderId = NormalizeFolderId(folderId);
+        var movingIds = new HashSet<string>(moving.Select(m => m.Id));
+        var oldFolders = new HashSet<string?>();
+        foreach (var m in moving)
+            oldFolders.Add(NormalizeFolderId(m.FolderId));
+
+        foreach (var m in moving)
+            m.FolderId = folderId;
+
+        var inTarget = Sessions.Where(s => s.FolderId == folderId).OrderBy(s => s.SortOrder).ToList();
+        var nonMoving = inTarget.Where(s => !movingIds.Contains(s.Id)).ToList();
+        var sortedMoving = moving.OrderBy(m => m.SortOrder).ToList();
+        var ordered = nonMoving.Concat(sortedMoving).ToList();
+        for (int i = 0; i < ordered.Count; i++)
+            ordered[i].SortOrder = i;
+
+        foreach (var of in oldFolders)
+            NormalizeSessionOrders(of);
+        Save();
+    }
+
+    /// <summary>Moves a block of sessions before an anchor (same folder as anchor after move).</summary>
+    public void MoveSessionsBeforeAnchor(IReadOnlyList<SavedSession> moving, SavedSession anchor)
+    {
+        if (moving.Count == 0) return;
+        if (moving.Any(m => m.Id == anchor.Id)) return;
+        var movingIds = new HashSet<string>(moving.Select(m => m.Id));
+        string? fid = NormalizeFolderId(anchor.FolderId);
+        var oldFolders = new HashSet<string?>();
+        foreach (var m in moving)
+            oldFolders.Add(NormalizeFolderId(m.FolderId));
+
+        foreach (var m in moving)
+            m.FolderId = fid;
+
+        var others = Sessions.Where(s => s.FolderId == fid && !movingIds.Contains(s.Id)).OrderBy(s => s.SortOrder).ToList();
+        int insert = others.FindIndex(s => s.Id == anchor.Id);
+        if (insert < 0) insert = 0;
+        var sortedMoving = moving.OrderBy(m => m.SortOrder).ToList();
+        foreach (var m in sortedMoving)
+            others.Insert(insert++, m);
+        for (int i = 0; i < others.Count; i++)
+            others[i].SortOrder = i;
+
+        foreach (var of in oldFolders)
+            NormalizeSessionOrders(of);
+        Save();
+    }
+
+    /// <summary>Moves a block of sessions after an anchor (same folder as anchor after move).</summary>
+    public void MoveSessionsAfterAnchor(IReadOnlyList<SavedSession> moving, SavedSession anchor)
+    {
+        if (moving.Count == 0) return;
+        if (moving.Any(m => m.Id == anchor.Id)) return;
+        var movingIds = new HashSet<string>(moving.Select(m => m.Id));
+        string? fid = NormalizeFolderId(anchor.FolderId);
+        var oldFolders = new HashSet<string?>();
+        foreach (var m in moving)
+            oldFolders.Add(NormalizeFolderId(m.FolderId));
+
+        foreach (var m in moving)
+            m.FolderId = fid;
+
+        var others = Sessions.Where(s => s.FolderId == fid && !movingIds.Contains(s.Id)).OrderBy(s => s.SortOrder).ToList();
+        int insert = others.FindIndex(s => s.Id == anchor.Id);
+        if (insert < 0) insert = others.Count - 1;
+        else insert++;
+        var sortedMoving = moving.OrderBy(m => m.SortOrder).ToList();
+        foreach (var m in sortedMoving)
+            others.Insert(insert++, m);
+        for (int i = 0; i < others.Count; i++)
+            others[i].SortOrder = i;
+
+        foreach (var of in oldFolders)
+            NormalizeSessionOrders(of);
+        Save();
+    }
+
+    public void MoveFolderUp(SessionFolder folder)
+    {
+        if (!string.IsNullOrEmpty(folder.ParentId)) return;
+        var list = Folders.Where(f => f.ParentId == null).OrderBy(f => f.SortOrder).ToList();
+        int i = list.FindIndex(f => f.Id == folder.Id);
+        if (i <= 0) return;
+        (list[i - 1], list[i]) = (list[i], list[i - 1]);
+        for (int j = 0; j < list.Count; j++)
+            list[j].SortOrder = j;
+        Save();
+    }
+
+    public void MoveFolderDown(SessionFolder folder)
+    {
+        if (!string.IsNullOrEmpty(folder.ParentId)) return;
+        var list = Folders.Where(f => f.ParentId == null).OrderBy(f => f.SortOrder).ToList();
+        int i = list.FindIndex(f => f.Id == folder.Id);
+        if (i < 0 || i >= list.Count - 1) return;
+        (list[i + 1], list[i]) = (list[i], list[i + 1]);
+        for (int j = 0; j < list.Count; j++)
+            list[j].SortOrder = j;
+        Save();
+    }
+
     private void NormalizeFolderOrders(string? parentId)
     {
         var list = Folders.Where(f => f.ParentId == parentId).OrderBy(f => f.SortOrder).ToList();

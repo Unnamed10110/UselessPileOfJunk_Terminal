@@ -54,8 +54,11 @@ A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, f
 
 - Start command example
 
-![run example](UselessTerminal_05_04_2026_03_47_50.gif)
+<img src="UselessTerminal_05_04_2026_03_47_50.gif" alt="run example" width="100%">
 
+- Splitted panes
+
+![splitted](UselessTerminal_05_04_2026_07_13_38.png)
 
 ## Requirements
 
