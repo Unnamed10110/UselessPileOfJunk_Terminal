@@ -43,7 +43,7 @@ public sealed class AppSettings
     public string ShellBackgroundImagePath { get; set; } = "";
 
     /// <summary>Opacity of the background image layer (0–1).</summary>
-    public double ShellBackgroundImageOpacity { get; set; } = 0.4;
+    public double ShellBackgroundImageOpacity { get; set; } = 0.52;
 
     /// <summary>
     /// Builds the xterm theme payload: semantic colors are expanded into the 16 ANSI slots so shells
