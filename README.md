@@ -54,7 +54,8 @@ A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, f
 
 - Start command example
 
-![custom session utility](UselessTerminal_04_04_2026_16_25_48.gif)
+![run example](UselessTerminal_05_04_2026_03_47_50.gif)
+
 
 ## Requirements
 
