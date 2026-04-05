@@ -56,6 +56,10 @@ A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, f
 
 <img src="UselessTerminal_05_04_2026_03_47_50.gif" alt="run example" width="100%">
 
+- Splitted panes
+
+![splitted](UselessTerminal_05_04_2026_07_13_38.png)
+
 ## Requirements
 
 - Windows 10 version 1809+ (for ConPTY)

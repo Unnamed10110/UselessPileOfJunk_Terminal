@@ -25,30 +25,30 @@ public static class ShellDetector
 
         string? pwsh = FindExecutable("pwsh.exe");
         if (pwsh is not null)
-            shells.Add(new ShellProfile { Name = "PowerShell", Command = pwsh, IconGlyph = "\uE756", Color = "#00e5ff", IsDefault = true });
+            shells.Add(new ShellProfile { Name = "PowerShell", Command = pwsh, IconGlyph = "", Color = "#00e5ff", IsDefault = true });
 
         string winPs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
         if (File.Exists(winPs))
-            shells.Add(new ShellProfile { Name = "Windows PowerShell", Command = winPs, IconGlyph = "\uE756", Color = "#00e5ff", IsDefault = pwsh is null });
+            shells.Add(new ShellProfile { Name = "Windows PowerShell", Command = winPs, IconGlyph = "", Color = "#00e5ff", IsDefault = pwsh is null });
 
         string cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
         if (File.Exists(cmd))
-            shells.Add(new ShellProfile { Name = "Command Prompt", Command = cmd, IconGlyph = "\uE756", Color = "#ffff00" });
+            shells.Add(new ShellProfile { Name = "Command Prompt", Command = cmd, IconGlyph = "", Color = "#ffff00" });
 
         string wsl = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "wsl.exe");
         if (File.Exists(wsl))
         {
-            shells.Add(new ShellProfile { Name = "WSL", Command = wsl, IconGlyph = "\uE756", Color = "#ff8800" });
+            shells.Add(new ShellProfile { Name = "WSL", Command = wsl, IconGlyph = "", Color = "#ff8800" });
             foreach (var distro in GetWslDistros())
-                shells.Add(new ShellProfile { Name = $"WSL: {distro}", Command = wsl, Arguments = $"-d {distro}", IconGlyph = "\uE756", Color = "#ff8800" });
+                shells.Add(new ShellProfile { Name = $"WSL: {distro}", Command = wsl, Arguments = $"-d {distro}", IconGlyph = "", Color = "#ff8800" });
         }
 
         string? gitBash = FindGitBash();
         if (gitBash is not null)
-            shells.Add(new ShellProfile { Name = "Git Bash", Command = gitBash, Arguments = "--login -i", IconGlyph = "\uE756", Color = "#ff003c" });
+            shells.Add(new ShellProfile { Name = "Git Bash", Command = gitBash, Arguments = "--login -i", IconGlyph = "", Color = "#ff003c" });
 
         if (shells.Count == 0)
-            shells.Add(new ShellProfile { Name = "Command Prompt", Command = "cmd.exe", IconGlyph = "\uE756", Color = "#ffff00", IsDefault = true });
+            shells.Add(new ShellProfile { Name = "Command Prompt", Command = "cmd.exe", IconGlyph = "", Color = "#ffff00", IsDefault = true });
 
         return shells;
     }

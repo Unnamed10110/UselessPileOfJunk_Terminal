@@ -8,6 +8,7 @@
 
     <UserControl.Resources>
         <conv:HexColorConverter x:Key="HexColor" />
+        <conv:SavedSessionShellIconConverter x:Key="SessionShellIcon" />
 
         <!-- Default TreeViewItem template does not stretch header content; full-width cards need this. -->
         <Style x:Key="SessionTreeViewItemStyle" TargetType="TreeViewItem">
@@ -228,10 +229,15 @@
                     </Border.Style>
                     <Grid HorizontalAlignment="Stretch" MinWidth="0">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" MinWidth="0" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center" MinWidth="0">
+                        <Image Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Width="18" Height="18" Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               Source="{Binding Session, Converter={StaticResource SessionShellIcon}}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="0">
                             <TextBlock Text="{Binding Session.Name}" FontSize="13"
                                        Foreground="#ffffff" TextTrimming="CharacterEllipsis"
                                        TextWrapping="NoWrap" />
@@ -240,7 +246,7 @@
                                        TextWrapping="NoWrap"
                                        Margin="0,2,0,0" />
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Click="EditSession_Click" Tag="{Binding Session.Id}"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="4,2" Cursor="Hand" Foreground="#888888"
