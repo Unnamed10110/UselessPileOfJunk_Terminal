@@ -33,10 +33,54 @@ public static class ShellIconLoader
 
     public static ImageSource GetIconForCommand(string command)
     {
-        string token = ShellGlyphResolver.ParseExecutable(command);
-        if (string.IsNullOrEmpty(token))
+        command = command.Trim();
+        if (string.IsNullOrEmpty(command))
             return FallbackIcon;
-        return GetIconForPath(token);
+
+        string? exe = ResolveExecutableFromCommandLine(command);
+        return GetIconForPath(exe ?? "");
+    }
+
+    /// <summary>
+    /// Resolves the executable path for icon loading. Handles quoted paths and unquoted paths that contain spaces
+    /// (where naive first-token parsing would stop at the first space, e.g. C:\Program).
+    /// </summary>
+    private static string? ResolveExecutableFromCommandLine(string command)
+    {
+        string token = ShellGlyphResolver.ParseExecutable(command).Trim().Trim('"');
+        if (!string.IsNullOrEmpty(token))
+        {
+            if (ResolveExecutableToPath(token) is { } r)
+                return r;
+            if (File.Exists(token))
+                return Path.GetFullPath(token);
+        }
+
+        string? grown = TryGrowUntilExecutableExists(command);
+        return grown ?? (string.IsNullOrEmpty(token) ? null : token);
+    }
+
+    /// <summary>Unquoted command line: grow word-by-word until the prefix resolves to an existing executable.</summary>
+    private static string? TryGrowUntilExecutableExists(string command)
+    {
+        if (command.Contains('"', StringComparison.Ordinal))
+            return null;
+
+        string[] parts = command.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return null;
+
+        string acc = parts[0];
+        for (int i = 1; i < parts.Length; i++)
+        {
+            acc += " " + parts[i];
+            if (ResolveExecutableToPath(acc) is { } r)
+                return r;
+            if (File.Exists(acc))
+                return Path.GetFullPath(acc);
+        }
+
+        return null;
     }
 
     public static ImageSource GetIconForPath(string shellPath)

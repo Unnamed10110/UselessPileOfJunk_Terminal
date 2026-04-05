@@ -66,9 +66,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- Session Panel -->
-            <Border Grid.Column="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,1,0"
-                    ClipToBounds="True">
-                <local:SessionPanel x:Name="SessionPanel" />
+            <Border Grid.Column="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,1,0">
+                <local:SessionPanel x:Name="SessionPanel" MinWidth="0" HorizontalAlignment="Stretch" />
             </Border>
 
             <GridSplitter x:Name="SessionGridSplitter"

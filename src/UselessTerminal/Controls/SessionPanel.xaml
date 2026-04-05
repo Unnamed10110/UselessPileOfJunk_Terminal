@@ -4,11 +4,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:local="clr-namespace:UselessTerminal.Controls"
-    xmlns:conv="clr-namespace:UselessTerminal.Converters">
+    xmlns:conv="clr-namespace:UselessTerminal.Converters"
+    MinWidth="0"
+    HorizontalAlignment="Stretch">
 
     <UserControl.Resources>
         <conv:HexColorConverter x:Key="HexColor" />
         <conv:SavedSessionShellIconConverter x:Key="SessionShellIcon" />
+        <conv:TreeViewItemHeaderMaxWidthConverter x:Key="TviHeaderMaxWidth" />
 
         <!-- Default TreeViewItem template does not stretch header content; full-width cards need this. -->
         <Style x:Key="SessionTreeViewItemStyle" TargetType="TreeViewItem">
@@ -46,8 +49,9 @@
                                                   HorizontalAlignment="Stretch"
                                                   ContentSource="Header" />
                             </Border>
+                            <!-- No extra left indent for nested sessions (folders still use the expander column only). -->
                             <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Grid.Column="1"
-                                            Margin="14,0,0,0" />
+                                            Margin="0" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="HasItems" Value="False">
@@ -65,7 +69,14 @@
             </Setter>
         </Style>
         <HierarchicalDataTemplate DataType="{x:Type local:SessionTreeNode}" ItemsSource="{Binding Children}">
+            <!-- Cap width to the visible row (minus expander column when present); avoids right-edge clip on narrow panels. -->
             <Grid HorizontalAlignment="Stretch" MinWidth="0">
+                <Grid.MaxWidth>
+                    <MultiBinding Converter="{StaticResource TviHeaderMaxWidth}" Mode="OneWay">
+                        <Binding RelativeSource="{RelativeSource AncestorType=TreeViewItem, Mode=FindAncestor}" Path="ActualWidth" />
+                        <Binding RelativeSource="{RelativeSource AncestorType=TreeViewItem, Mode=FindAncestor}" Path="HasItems" />
+                    </MultiBinding>
+                </Grid.MaxWidth>
                 <!-- Folder row: same horizontal padding as session cards; expand/collapse is the TreeView chevron only. -->
                 <Border MinHeight="52" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                         CornerRadius="4" Padding="8,6" BorderThickness="1" BorderBrush="#2a2a2a">
@@ -74,6 +85,10 @@
                             <MenuItem Header="New session in folder" Click="ContextFolder_AddSession_Click"
                                       Tag="{Binding Folder.Id}" />
                             <MenuItem Header="Rename folder" Click="ContextFolder_Rename_Click"
+                                      Tag="{Binding Folder.Id}" />
+                            <MenuItem Header="Move folder up" Click="ContextFolder_MoveUp_Click"
+                                      Tag="{Binding Folder.Id}" />
+                            <MenuItem Header="Move folder down" Click="ContextFolder_MoveDown_Click"
                                       Tag="{Binding Folder.Id}" />
                             <Separator />
                             <MenuItem Header="Expand" Click="ContextFolder_Expand_Click"
@@ -101,60 +116,61 @@
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <Grid HorizontalAlignment="Stretch" MinWidth="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" MinWidth="0" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                   Foreground="#00e5ff" Margin="0,0,6,0" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets" FontSize="11"
-                                   Foreground="#aaaaaa" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Setter Property="Text" Value="&#xE76C;" />
-                                    <Setter Property="ToolTip" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                     Value="True">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                           Value="True" />
-                                                <Condition Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                           Value="True" />
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Text" Value="&#xE70D;" />
-                                            <Setter Property="ToolTip" Value="Expanded" />
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                        <TextBlock Grid.Column="2" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
-                                   Foreground="#ffffff" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   TextWrapping="NoWrap" />
-                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <DockPanel HorizontalAlignment="Stretch" MinWidth="0" LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Click="AddSessionInFolder_Click" Tag="{Binding Folder.Id}"
                                     ToolTip="New session in folder" Background="Transparent" BorderThickness="0"
-                                    Padding="4,2" Cursor="Hand" Foreground="#888888">
+                                    Padding="2,2" Cursor="Hand" Foreground="#888888">
                                 <ui:SymbolIcon Symbol="Add24" FontSize="12" />
                             </Button>
                             <Button Click="RenameFolder_Click" Tag="{Binding Folder.Id}"
                                     ToolTip="Rename" Background="Transparent" BorderThickness="0"
-                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Padding="2,2" Cursor="Hand" Foreground="#888888"
                                     Content="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
                             <Button Click="DeleteFolder_Click" Tag="{Binding Folder.Id}"
                                     ToolTip="Delete folder" Background="Transparent" BorderThickness="0"
-                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Padding="2,2" Cursor="Hand" Foreground="#888888"
                                     Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
                         </StackPanel>
-                    </Grid>
+                        <Grid MinWidth="0" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" MinWidth="0" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                       Foreground="#00e5ff" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                       Foreground="#aaaaaa" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Setter Property="Text" Value="&#xE76C;" />
+                                        <Setter Property="ToolTip" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                         Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                               Value="True" />
+                                                    <Condition Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                               Value="True" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Text" Value="&#xE70D;" />
+                                                <Setter Property="ToolTip" Value="Expanded" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Grid.Column="2" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
+                                       Foreground="#ffffff" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap" />
+                        </Grid>
+                    </DockPanel>
                 </Border>
 
                 <!-- Session row -->
@@ -211,7 +227,7 @@
                                 </MultiDataTrigger>
                                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
                                              Value="True">
-                                    <Setter Property="BorderThickness" Value="2" />
+                                    <Setter Property="BorderThickness" Value="1" />
                                     <Setter Property="BorderBrush">
                                         <Setter.Value>
                                             <SolidColorBrush Color="#ffffff" Opacity="0.9" />
@@ -224,47 +240,57 @@
                                         </Setter.Value>
                                     </Setter>
                                 </DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Kind}" Value="Session" />
+                                        <Condition Binding="{Binding IsMultiSelected}" Value="True" />
+                                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                                   Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="BorderThickness" Value="2" />
+                                    <Setter Property="BorderBrush" Value="#5588dd" />
+                                </MultiDataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <Grid HorizontalAlignment="Stretch" MinWidth="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" MinWidth="0" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Image Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0"
-                               Width="18" Height="18" Stretch="Uniform"
-                               RenderOptions.BitmapScalingMode="HighQuality"
-                               Source="{Binding Session, Converter={StaticResource SessionShellIcon}}" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="0">
-                            <TextBlock Text="{Binding Session.Name}" FontSize="13"
-                                       Foreground="#ffffff" TextTrimming="CharacterEllipsis"
-                                       TextWrapping="NoWrap" />
-                            <TextBlock Text="{Binding Session.DisplayCommand}" FontSize="10"
-                                       Foreground="#888888" TextTrimming="CharacterEllipsis"
-                                       TextWrapping="NoWrap"
-                                       Margin="0,2,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Dock actions first so the title/command column always yields remaining width (avoids right clip). -->
+                    <DockPanel HorizontalAlignment="Stretch" MinWidth="0" LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Click="EditSession_Click" Tag="{Binding Session.Id}"
                                     Background="Transparent" BorderThickness="0"
-                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Padding="2,2" Cursor="Hand" Foreground="#888888"
                                     ToolTip="Edit" Content="&#xE70F;"
                                     FontFamily="Segoe MDL2 Assets" FontSize="11" />
                             <Button Click="DeleteSession_Click" Tag="{Binding Session.Id}"
                                     Background="Transparent" BorderThickness="0"
-                                    Padding="4,2" Cursor="Hand" Foreground="#888888"
+                                    Padding="2,2" Cursor="Hand" Foreground="#888888"
                                     ToolTip="Delete" Content="&#xE74D;"
                                     FontFamily="Segoe MDL2 Assets" FontSize="11" />
                         </StackPanel>
-                    </Grid>
+                        <Image DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Width="18" Height="18" Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               Source="{Binding Session, Converter={StaticResource SessionShellIcon}}" />
+                        <Grid MinWidth="0" VerticalAlignment="Center">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="{Binding Session.Name}" FontSize="13"
+                                       Foreground="#ffffff" TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap" />
+                            <TextBlock Grid.Row="1" Text="{Binding Session.DisplayCommand}" FontSize="10"
+                                       Foreground="#888888" TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap"
+                                       Margin="0,2,0,0" />
+                        </Grid>
+                    </DockPanel>
                 </Border>
             </Grid>
         </HierarchicalDataTemplate>
     </UserControl.Resources>
 
-    <Grid Background="#000000">
+    <Grid Background="#000000" MinWidth="0" HorizontalAlignment="Stretch">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -315,8 +341,9 @@
 
         <TreeView x:Name="SessionTree" Grid.Row="2"
                   Background="Transparent" BorderThickness="0"
-                  Padding="0,2,4,4"
+                  Padding="0,2,2,4"
                   HorizontalContentAlignment="Stretch"
+                  UseLayoutRounding="True"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                   ItemContainerStyle="{StaticResource SessionTreeViewItemStyle}"
@@ -326,6 +353,7 @@
                   PreviewMouseLeftButtonUp="SessionTree_PreviewMouseLeftButtonUp"
                   DragOver="SessionTree_DragOver"
                   Drop="SessionTree_Drop"
+                  SelectedItemChanged="SessionTree_SelectedItemChanged"
                   MouseDoubleClick="SessionTree_MouseDoubleClick">
             <TreeView.ContextMenu>
                 <ContextMenu>
