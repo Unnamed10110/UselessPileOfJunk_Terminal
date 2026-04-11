@@ -106,6 +106,11 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                 case "title":
                     TitleChanged?.Invoke(msg.data ?? "Terminal");
                     break;
+
+                case "fontSize":
+                    if (msg.fontSize is int sz && sz >= 8 && sz <= 32)
+                        SettingsStore.Instance.UpdateFontSize(sz);
+                    break;
             }
         }
         catch { }
@@ -253,5 +258,5 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         _session = null;
     }
 
-    private record TerminalMessage(string type, string? data, int cols, int rows);
+    private record TerminalMessage(string type, string? data, int cols, int rows, int? fontSize);
 }

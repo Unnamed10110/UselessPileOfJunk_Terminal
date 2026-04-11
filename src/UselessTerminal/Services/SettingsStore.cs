@@ -59,4 +59,14 @@ public sealed class SettingsStore
         Save();
         SettingsChanged?.Invoke();
     }
+
+    /// <summary>Updates shell font size from Ctrl+scroll (or similar); clamps 8–32 and persists.</summary>
+    public void UpdateFontSize(int fontSize)
+    {
+        fontSize = Math.Clamp(fontSize, 8, 32);
+        if (Current.FontSize == fontSize) return;
+        Current.FontSize = fontSize;
+        Save();
+        SettingsChanged?.Invoke();
+    }
 }

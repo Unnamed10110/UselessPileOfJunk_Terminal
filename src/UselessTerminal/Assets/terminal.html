@@ -209,6 +209,28 @@
         fitAddon.fit();
     };
 
+    // Ctrl + mouse wheel: zoom terminal font (matches settings range 8–32); persist via host
+    const minFont = 8;
+    const maxFont = 32;
+    let fontWheelAcc = 0;
+    window.addEventListener('wheel', function(e) {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        fontWheelAcc += e.deltaY;
+        const threshold = 40;
+        if (Math.abs(fontWheelAcc) < threshold) return;
+        const delta = fontWheelAcc < 0 ? 1 : -1;
+        fontWheelAcc = 0;
+        let next = Math.round(term.options.fontSize) + delta;
+        if (next < minFont) next = minFont;
+        if (next > maxFont) next = maxFont;
+        if (next === Math.round(term.options.fontSize)) return;
+        term.options.fontSize = next;
+        fitAddon.fit();
+        sendResize();
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'fontSize', fontSize: next }));
+    }, { passive: false, capture: true });
+
     // Signal ready
     sendResize();
     term.focus();
