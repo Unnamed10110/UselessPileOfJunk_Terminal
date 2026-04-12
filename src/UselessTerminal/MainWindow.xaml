@@ -63,6 +63,8 @@
                 <ColumnDefinition x:Name="SessionPanelColumn" Width="0" MinWidth="0" MaxWidth="900" />
                 <ColumnDefinition x:Name="SessionSplitterColumn" Width="0" MinWidth="0" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="BrowserSplitterColumn" Width="0" MinWidth="0" />
+                <ColumnDefinition x:Name="BrowserPanelColumn" Width="0" MinWidth="0" MaxWidth="1600" />
             </Grid.ColumnDefinitions>
 
             <!-- Session Panel -->
@@ -82,10 +84,11 @@
             <!-- Main Content: Tab Bar + Terminal.
                  Right/bottom margin keeps a WPF-only strip so WebView2 does not cover the window edge
                  (HWND would otherwise steal WM_NCHITTEST and block resizing on that side). -->
-            <Grid Grid.Column="2" Margin="0,0,6,6">
+            <Grid Grid.Column="2" Margin="0,0,6,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Tab Strip -->
@@ -101,6 +104,14 @@
                         </Button>
 
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="BrowserToggleButton"
+                                    Click="BrowserToggleButton_Click"
+                                    ToolTip="Toggle Browser (Ctrl+Shift+B)"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
+                                    Foreground="#ffffff">
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="16" />
+                            </Button>
                             <Button x:Name="SettingsButton"
                                     Click="SettingsButton_Click"
                                     ToolTip="Settings (Ctrl+,)"
@@ -196,8 +207,45 @@
                 </Border>
 
                 <!-- Terminal Content Area -->
-                <Grid x:Name="TerminalHost" Grid.Row="1" Background="#000000" />
+                <Grid x:Name="TerminalHost" Grid.Row="1" Background="#000000" Margin="0,0,0,0" />
+
+                <!-- Status Bar (own row so WebView2 HWND doesn't cover it) -->
+                <Border Grid.Row="2" Height="22"
+                        Background="#0a0a0a" BorderBrush="#1a1a1a" BorderThickness="0,1,0,0"
+                        Padding="10,0">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatusShell" Foreground="#6b7280" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+                            <TextBlock x:Name="StatusPid" Foreground="#4b5563" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+                            <TextBlock x:Name="StatusCwd" Foreground="#9ca3af" FontSize="10.5"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" />
+                            <TextBlock x:Name="StatusGitBranch" Foreground="#22d3ee" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+                            <TextBlock x:Name="StatusExitCode" Foreground="#6b7280" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+                        </StackPanel>
+                        <TextBlock x:Name="StatusAlive" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                   Foreground="#22c55e" FontSize="10.5" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
             </Grid>
+
+            <!-- Browser Splitter -->
+            <GridSplitter x:Name="BrowserGridSplitter"
+                          Grid.Column="3"
+                          Width="5" HorizontalAlignment="Stretch"
+                          Background="#333333" BorderThickness="0"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"
+                          Cursor="SizeWE"
+                          DragCompleted="BrowserGridSplitter_DragCompleted" />
+
+            <!-- Browser Panel -->
+            <Border Grid.Column="4" Background="#0a0a0a" BorderBrush="#333333" BorderThickness="1,0,0,0">
+                <local:BrowserPanel x:Name="BrowserPanel" MinWidth="0" HorizontalAlignment="Stretch" />
+            </Border>
         </Grid>
     </Grid>
 

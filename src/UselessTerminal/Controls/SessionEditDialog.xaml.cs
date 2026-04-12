@@ -29,6 +29,10 @@ public partial class SessionEditDialog : Window
         WorkDirBox.Text = session.WorkingDirectory;
         StartingCommandBox.Text = session.StartingCommand;
 
+        ThemeBgBox.Text = session.ThemeBackground;
+        ThemeFontSizeBox.Text = session.ThemeFontSize > 0 ? session.ThemeFontSize.ToString() : "";
+        EnvVarsBox.Text = session.EnvironmentVariables;
+
         ApplyColorToUi(session.ColorTag);
 
         if (string.IsNullOrWhiteSpace(session.ShellPath))
@@ -203,6 +207,12 @@ public partial class SessionEditDialog : Window
         _session.WorkingDirectory = WorkDirBox.Text.Trim();
         _session.StartingCommand = StartingCommandBox.Text.Trim();
         _session.ColorTag = _selectedColor;
+        _session.ThemeBackground = ThemeBgBox.Text.Trim();
+        if (int.TryParse(ThemeFontSizeBox.Text.Trim(), out int fs) && fs >= 8 && fs <= 32)
+            _session.ThemeFontSize = fs;
+        else
+            _session.ThemeFontSize = 0;
+        _session.EnvironmentVariables = EnvVarsBox.Text.Trim();
 
         DialogResult = true;
         Close();

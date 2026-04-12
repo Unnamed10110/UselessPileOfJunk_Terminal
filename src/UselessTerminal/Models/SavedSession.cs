@@ -18,6 +18,13 @@ public sealed class SavedSession
     public string? FolderId { get; set; }
     public int SortOrder { get; set; }
 
+    /// <summary>Per-session theme override (terminal background). Empty = use global.</summary>
+    public string ThemeBackground { get; set; } = "";
+    /// <summary>Per-session font size override. 0 = use global.</summary>
+    public int ThemeFontSize { get; set; }
+    /// <summary>Per-session environment variable overrides (KEY=VALUE per line).</summary>
+    public string EnvironmentVariables { get; set; } = "";
+
     [JsonIgnore]
     public bool HasDescription => !string.IsNullOrWhiteSpace(Description);
 

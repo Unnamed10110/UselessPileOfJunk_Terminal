@@ -96,6 +96,18 @@
         </StackPanel>
 
         <StackPanel Grid.Row="7" Margin="0,0,0,12">
+            <TextBlock Text="Theme Override (optional)" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Text="Background" Width="80" Foreground="#666" VerticalAlignment="Center" FontSize="11" />
+                <TextBox x:Name="ThemeBgBox" Width="90" FontSize="12" Padding="6,4"
+                         Background="#000000" Foreground="#ffffff"
+                         BorderBrush="#555555" BorderThickness="1" />
+                <TextBlock Text="   Font size" Foreground="#666" VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0" />
+                <TextBox x:Name="ThemeFontSizeBox" Width="50" FontSize="12" Padding="6,4"
+                         Background="#000000" Foreground="#ffffff"
+                         BorderBrush="#555555" BorderThickness="1" Margin="6,0,0,0" />
+                <TextBlock Text="(0 = global)" Foreground="#444" VerticalAlignment="Center" FontSize="10" Margin="6,0,0,0" />
+            </DockPanel>
             <TextBlock Text="Color Tag" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
             <WrapPanel>
                 <RadioButton x:Name="ColorBlue" Tag="#00ff44" Margin="0,0,6,0"
@@ -118,6 +130,15 @@
                     <Ellipse Width="20" Height="20" Fill="#ff8800" />
                 </RadioButton>
             </WrapPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="8" Margin="0,0,0,12">
+            <TextBlock Text="Environment Variables (KEY=VALUE, one per line)" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBox x:Name="EnvVarsBox" FontSize="12" Padding="8,6"
+                     MinHeight="50" MaxHeight="100" AcceptsReturn="True"
+                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                     Background="#000000" Foreground="#ffffff"
+                     BorderBrush="#555555" BorderThickness="1" />
         </StackPanel>
 
         <!-- Buttons -->

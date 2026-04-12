@@ -17,14 +17,25 @@ public sealed class ConPtySession : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _readTask;
     private bool _disposed;
+    private Dictionary<string, string>? _extraEnv;
 
     public event Action<byte[]>? OutputReceived;
     public event Action? ProcessExited;
     public int ProcessId { get; private set; }
 
-    public void Start(string command, string? workingDirectory, short cols, short rows)
+    public bool IsProcessAlive
+    {
+        get
+        {
+            if (_disposed || _processHandle == 0) return false;
+            return NativeMethods.GetExitCodeProcess(_processHandle, out uint code) && code == NativeMethods.STILL_ACTIVE;
+        }
+    }
+
+    public void Start(string command, string? workingDirectory, short cols, short rows, Dictionary<string, string>? extraEnv = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _extraEnv = extraEnv;
 
         var size = new COORD(cols, rows);
 
@@ -78,11 +89,22 @@ public sealed class ConPtySession : IDisposable
             lpAttributeList = _attributeList
         };
 
+        nint envBlock = 0;
+        if (_extraEnv is { Count: > 0 })
+        {
+            envBlock = BuildEnvironmentBlock(_extraEnv);
+        }
+
         if (!CreateProcessW(
                 null, command, 0, 0, false,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-                0, workingDirectory, ref startupInfo, out var processInfo))
+                envBlock, workingDirectory, ref startupInfo, out var processInfo))
+        {
+            if (envBlock != 0) Marshal.FreeHGlobal(envBlock);
             throw new InvalidOperationException($"CreateProcess failed: {Marshal.GetLastWin32Error()}");
+        }
+
+        if (envBlock != 0) Marshal.FreeHGlobal(envBlock);
 
         _processHandle = processInfo.hProcess;
         _threadHandle = processInfo.hThread;
@@ -130,6 +152,29 @@ public sealed class ConPtySession : IDisposable
     public void WriteInput(string text)
     {
         WriteInput(System.Text.Encoding.UTF8.GetBytes(text));
+    }
+
+    private static nint BuildEnvironmentBlock(Dictionary<string, string> extra)
+    {
+        var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
+            env[e.Key?.ToString() ?? ""] = e.Value?.ToString() ?? "";
+        foreach (var kv in extra)
+            env[kv.Key] = kv.Value;
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in env)
+        {
+            sb.Append(kv.Key);
+            sb.Append('=');
+            sb.Append(kv.Value);
+            sb.Append('\0');
+        }
+        sb.Append('\0');
+
+        string block = sb.ToString();
+        nint ptr = Marshal.StringToHGlobalUni(block);
+        return ptr;
     }
 
     public void Resize(short cols, short rows)

@@ -11,9 +11,7 @@
     <UserControl.Resources>
         <conv:HexColorConverter x:Key="HexColor" />
         <conv:SavedSessionShellIconConverter x:Key="SessionShellIcon" />
-        <conv:TreeViewItemHeaderMaxWidthConverter x:Key="TviHeaderMaxWidth" />
 
-        <!-- Panel: list area stays full black; cards/search frame provide contrast -->
         <SolidColorBrush x:Key="SessionPanelBg" Color="#000000" />
         <SolidColorBrush x:Key="SessionTreeWell" Color="#000000" />
         <SolidColorBrush x:Key="SessionDivider" Color="#1f2128" />
@@ -23,83 +21,48 @@
         <SolidColorBrush x:Key="SessionFolderSelectedBg" Color="#161c28" />
         <SolidColorBrush x:Key="SessionRowHover" Color="#12ffffff" />
         <SolidColorBrush x:Key="SessionMultiSelectRing" Color="#818cf8" />
+        <SolidColorBrush x:Key="SessionIndentGuide" Color="#1a2030" />
 
-        <!-- Default TreeViewItem template does not stretch header content; full-width cards need this. -->
         <Style x:Key="SessionTreeViewItemStyle" TargetType="TreeViewItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#f4f4f5" />
-            <Setter Property="Padding" Value="0,4" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="IsExpanded" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
-                        <!-- Column 0 = expand chevron; column 1 = header full width; nested ItemsPresenter is indented for hierarchy. -->
-                        <Grid HorizontalAlignment="Stretch">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" MinWidth="0" />
-                            </Grid.ColumnDefinitions>
-                            <ToggleButton x:Name="Expander" Grid.Row="0" Grid.Column="0"
-                                          Width="22" Height="24"
-                                          VerticalAlignment="Center"
-                                          Background="Transparent" BorderThickness="0"
-                                          Focusable="False"
-                                          Cursor="Hand"
-                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-                                <TextBlock x:Name="ExpanderGlyph" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets"
-                                           FontSize="11" Foreground="#6b7280" HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </ToggleButton>
-                            <Border x:Name="Bd" Grid.Row="0" Grid.Column="1"
-                                    HorizontalAlignment="Stretch" Background="Transparent">
-                                <ContentPresenter x:Name="PART_Header"
-                                                  HorizontalAlignment="Stretch"
-                                                  ContentSource="Header" />
+                        <StackPanel HorizontalAlignment="Stretch">
+                            <ContentPresenter x:Name="PART_Header"
+                                              HorizontalAlignment="Stretch"
+                                              ContentSource="Header"
+                                              Margin="0,2" />
+                            <Border x:Name="ChildrenBorder" Margin="14,0,0,0"
+                                    BorderBrush="{StaticResource SessionIndentGuide}"
+                                    BorderThickness="1,0,0,0" Padding="14,0,0,0">
+                                <ItemsPresenter x:Name="ItemsHost" />
                             </Border>
-                            <!-- No extra left indent for nested sessions (folders still use the expander column only). -->
-                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Grid.Column="1"
-                                            Margin="0" />
-                        </Grid>
+                        </StackPanel>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="HasItems" Value="False">
-                                <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
-                            </Trigger>
-                            <Trigger Property="IsExpanded" Value="True">
-                                <Setter TargetName="ExpanderGlyph" Property="Text" Value="&#xE70D;" />
-                            </Trigger>
                             <Trigger Property="IsExpanded" Value="False">
-                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="ChildrenBorder" Property="Visibility" Value="Collapsed" />
                             </Trigger>
-                            <Trigger SourceName="Expander" Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ExpanderGlyph" Property="Foreground" Value="#d1d5db" />
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="ChildrenBorder" Property="Visibility" Value="Collapsed" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SessionRowHover}" />
-                </Trigger>
-            </Style.Triggers>
         </Style>
+
         <HierarchicalDataTemplate DataType="{x:Type local:SessionTreeNode}" ItemsSource="{Binding Children}">
-            <!-- Cap width to the visible row (minus expander column when present); avoids right-edge clip on narrow panels. -->
-            <Grid HorizontalAlignment="Stretch" MinWidth="0">
-                <Grid.MaxWidth>
-                    <MultiBinding Converter="{StaticResource TviHeaderMaxWidth}" Mode="OneWay">
-                        <Binding RelativeSource="{RelativeSource AncestorType=TreeViewItem, Mode=FindAncestor}" Path="ActualWidth" />
-                        <Binding RelativeSource="{RelativeSource AncestorType=TreeViewItem, Mode=FindAncestor}" Path="HasItems" />
-                    </MultiBinding>
-                </Grid.MaxWidth>
-                <!-- Folder row: same horizontal padding as session cards; expand/collapse is the TreeView chevron only. -->
-                <Border MinHeight="52" HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                        CornerRadius="8" Padding="10,8" BorderThickness="1"
+            <Grid HorizontalAlignment="Stretch" MinWidth="0" ClipToBounds="True">
+                <!-- ═══ Folder card ═══ -->
+                <Border MinHeight="44" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                        CornerRadius="8" Padding="6,6,10,6" BorderThickness="1"
                         Background="{StaticResource SessionFolderCardBg}"
                         BorderBrush="{StaticResource SessionFolderCardBorder}">
                     <Border.ContextMenu>
@@ -153,49 +116,39 @@
                                     Padding="4,3" Cursor="Hand" Foreground="{StaticResource SessionTextSecondary}"
                                     Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
                         </StackPanel>
-                        <Grid MinWidth="0" VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" MinWidth="0" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="15"
-                                       Foreground="#22d3ee" Margin="0,0,8,0" VerticalAlignment="Center" Opacity="0.95" />
-                            <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets" FontSize="11"
-                                       Foreground="{StaticResource SessionTextSecondary}" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <ToggleButton DockPanel.Dock="Left" Width="26" Height="26"
+                                      VerticalAlignment="Center" Margin="0,0,4,0"
+                                      Background="Transparent" BorderThickness="0"
+                                      Focusable="False" Cursor="Hand"
+                                      IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}, Mode=TwoWay}">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                       Foreground="#6b7280" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
                                         <Setter Property="Text" Value="&#xE76C;" />
-                                        <Setter Property="ToolTip" Value="Collapsed" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
+                                            <DataTrigger Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
                                                          Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding HasItems, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                               Value="True" />
-                                                    <Condition Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=TreeViewItem}}"
-                                                               Value="True" />
-                                                </MultiDataTrigger.Conditions>
                                                 <Setter Property="Text" Value="&#xE70D;" />
-                                                <Setter Property="ToolTip" Value="Expanded" />
-                                            </MultiDataTrigger>
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <TextBlock Grid.Column="2" Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13.5"
+                        </ToggleButton>
+                        <StackPanel Orientation="Horizontal" MinWidth="0" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                       Foreground="#22d3ee" Margin="0,0,8,0" VerticalAlignment="Center" Opacity="0.9" />
+                            <TextBlock Text="{Binding Folder.Name}" FontWeight="SemiBold" FontSize="13"
                                        Foreground="#f4f4f5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                        TextWrapping="NoWrap" />
-                        </Grid>
+                        </StackPanel>
                     </DockPanel>
                 </Border>
 
-                <!-- Session row -->
-                <Border CornerRadius="8" Padding="10,8" MinHeight="54" HorizontalAlignment="Stretch"
+                <!-- ═══ Session card ═══ -->
+                <Border CornerRadius="8" Padding="10,8" MinHeight="50" HorizontalAlignment="Stretch"
                         VerticalAlignment="Center"
                         ToolTipService.InitialShowDelay="0"
                         ToolTipService.BetweenShowDelay="0"
@@ -274,7 +227,6 @@
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <!-- Dock actions first so the title/command column always yields remaining width (avoids right clip). -->
                     <DockPanel HorizontalAlignment="Stretch" MinWidth="0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Click="EditSession_Click" Tag="{Binding Session.Id}"
@@ -297,13 +249,13 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="{Binding Session.Name}" FontSize="13.5" FontWeight="SemiBold"
+                            <TextBlock Grid.Row="0" Text="{Binding Session.Name}" FontSize="13" FontWeight="SemiBold"
                                        Foreground="#fafafa" TextTrimming="CharacterEllipsis"
                                        TextWrapping="NoWrap" />
                             <TextBlock Grid.Row="1" Text="{Binding Session.DisplayCommand}" FontSize="11"
                                        Foreground="{StaticResource SessionTextSecondary}" TextTrimming="CharacterEllipsis"
                                        TextWrapping="NoWrap"
-                                       Margin="0,3,0,0" Opacity="0.92" />
+                                       Margin="0,2,0,0" Opacity="0.92" />
                         </Grid>
                     </DockPanel>
                 </Border>
@@ -316,6 +268,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Padding="14,12" Background="{StaticResource SessionPanelBg}"
@@ -385,12 +338,85 @@
                     <MenuItem Header="New folder" Click="ContextTree_NewFolder_Click" />
                     <Separator />
                     <MenuItem Header="Import from Windows Terminal" Click="ContextTree_ImportWt_Click" />
+                    <MenuItem Header="Import from SSH Config" Click="ContextTree_ImportSsh_Click" />
                     <Separator />
                     <MenuItem Header="Export sessions…" Click="ContextTree_ExportSessions_Click" />
                     <MenuItem Header="Import sessions…" Click="ContextTree_ImportSessions_Click" />
                 </ContextMenu>
             </TreeView.ContextMenu>
         </TreeView>
+
+        <!-- Snippets -->
+        <Border Grid.Row="3" BorderBrush="{StaticResource SessionDivider}" BorderThickness="0,1,0,0"
+                Background="{StaticResource SessionPanelBg}">
+            <StackPanel>
+                <DockPanel Margin="14,10,14,4">
+                    <TextBlock Text="Snippets" FontSize="13" FontWeight="SemiBold"
+                               Foreground="#fafafa" VerticalAlignment="Center" />
+                    <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button Click="ToggleSnippets_Click"
+                                ToolTip="Toggle snippets"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="6,4" Cursor="Hand" Foreground="#888">
+                            <TextBlock x:Name="SnippetToggleGlyph" Text="&#xE70D;"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="10" />
+                        </Button>
+                        <Button Click="AddSnippet_Click"
+                                ToolTip="Add snippet"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="6,4" Cursor="Hand" Foreground="#888">
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12" />
+                        </Button>
+                    </StackPanel>
+                </DockPanel>
+                <ListBox x:Name="SnippetList" Background="Transparent" BorderThickness="0"
+                         Foreground="#ddd" MaxHeight="200"
+                         MouseDoubleClick="SnippetList_MouseDoubleClick"
+                         Padding="8,0,8,6">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="SnipBd" CornerRadius="6" Padding="10,7"
+                                                Background="Transparent">
+                                            <DockPanel>
+                                                <Button DockPanel.Dock="Right" Content="&#xE74D;"
+                                                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Foreground="#555" Click="SnippetDelete_Click"
+                                                        Tag="{Binding}" Cursor="Hand"
+                                                        Padding="4,2" VerticalAlignment="Center" />
+                                                <StackPanel MinWidth="0">
+                                                    <TextBlock Text="{Binding Name}" FontSize="12"
+                                                               Foreground="#e4e4e7" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Command}" FontSize="10"
+                                                               Foreground="#6b7280" TextTrimming="CharacterEllipsis"
+                                                               Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="SnipBd" Property="Background" Value="#0f1118" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="SnipBd" Property="Background" Value="#161c28" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </StackPanel>
+        </Border>
     </Grid>
 
 </UserControl>

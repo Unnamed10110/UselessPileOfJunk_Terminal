@@ -57,9 +57,21 @@ public partial class SettingsWindow : Window
         CursorBlinkBox.IsChecked = _settings.CursorBlink;
         ScrollbackBox.Text = _settings.Scrollback.ToString();
 
+        foreach (ComboBoxItem item in WindowBackdropBox.Items)
+        {
+            if ((string)item.Content == _settings.WindowBackdrop)
+            { WindowBackdropBox.SelectedItem = item; break; }
+        }
+
         ShellBgPathBox.Text = _settings.ShellBackgroundImagePath;
         ShellBgOpacitySlider.Value = Math.Clamp(_settings.ShellBackgroundImageOpacity * 100, 0, 100);
         ShellBgOpacityLabel.Text = $"{(int)ShellBgOpacitySlider.Value}%";
+
+        ThemePresetBox.Items.Clear();
+        ThemePresetBox.Items.Add("Custom");
+        foreach (var name in ThemePresets.All.Keys)
+            ThemePresetBox.Items.Add(name);
+        ThemePresetBox.SelectedIndex = 0;
 
         BuildColorGrid();
     }
@@ -208,6 +220,14 @@ public partial class SettingsWindow : Window
             Handle = new WindowInteropHelper(window).EnsureHandle();
     }
 
+    private void ThemePresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ThemePresetBox.SelectedItem is not string name) return;
+        if (name == "Custom" || !ThemePresets.All.TryGetValue(name, out var preset)) return;
+        ThemePresets.ApplyTo(_settings, preset);
+        BuildColorGrid();
+    }
+
     private void FontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (FontSizeLabel is not null)
@@ -231,6 +251,7 @@ public partial class SettingsWindow : Window
 
         _settings.ShellBackgroundImagePath = ShellBgPathBox.Text.Trim();
         _settings.ShellBackgroundImageOpacity = Math.Clamp(ShellBgOpacitySlider.Value / 100.0, 0, 1);
+        _settings.WindowBackdrop = (WindowBackdropBox.SelectedItem as ComboBoxItem)?.Content as string ?? "None";
 
         SyncColorsFromGridIntoSettings();
 

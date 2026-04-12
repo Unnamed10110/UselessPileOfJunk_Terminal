@@ -28,6 +28,7 @@ public sealed partial class SessionPanel : UserControl
 
     /// <summary>Second argument: true = elevated external console (UAC), false = embedded terminal tab.</summary>
     public event Action<SavedSession, bool>? SessionLaunched;
+    public event Action<string>? SnippetTriggered;
 
     public SessionPanel()
     {
@@ -35,6 +36,8 @@ public sealed partial class SessionPanel : UserControl
         _store.Load();
         _store.SeedDefaults();
         RefreshList();
+        LoadSnippets();
+        SnippetStore.Instance.SnippetsChanged += LoadSnippets;
     }
 
     private void SessionTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object?> e)
@@ -121,24 +124,36 @@ public sealed partial class SessionPanel : UserControl
         MessageBox.Show($"Imported {imported.Count} profile(s) from Windows Terminal.", "Import", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    public void ImportSshConfig()
+    {
+        var imported = SshConfigImporter.Import();
+        if (imported.Count == 0)
+        {
+            MessageBox.Show("No SSH hosts found in ~/.ssh/config.", "Import", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        int added = 0;
+        foreach (var session in imported)
+        {
+            if (!_store.Sessions.Any(s => s.Name == session.Name))
+            {
+                _store.Add(session);
+                added++;
+            }
+        }
+
+        RefreshList(SearchBox.Text);
+        MessageBox.Show($"Imported {added} SSH host(s) from ~/.ssh/config.", "Import", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private void RefreshList(string? filter = null)
     {
         SessionTree.ItemsSource = string.IsNullOrWhiteSpace(filter)
             ? BuildFullTree()
             : BuildFilteredFlat(filter.Trim());
 
-        if (string.IsNullOrWhiteSpace(filter))
-            Dispatcher.BeginInvoke(ExpandFolderNodesWithChildren, DispatcherPriority.Loaded);
         Dispatcher.BeginInvoke(UpdateMultiSelectUi, DispatcherPriority.Loaded);
-    }
-
-    private void ExpandFolderNodesWithChildren()
-    {
-        foreach (var tvi in EnumerateTreeViewItems(SessionTree))
-        {
-            if (tvi.DataContext is SessionTreeNode { Kind: SessionTreeNodeKind.Folder } n && n.Children.Count > 0)
-                tvi.IsExpanded = true;
-        }
     }
 
     private ObservableCollection<SessionTreeNode> BuildFullTree()
@@ -646,6 +661,8 @@ public sealed partial class SessionPanel : UserControl
 
     private void ContextTree_ImportWt_Click(object sender, RoutedEventArgs e) => ImportWt_Click(sender, e);
 
+    private void ContextTree_ImportSsh_Click(object sender, RoutedEventArgs e) => ImportSshConfig();
+
     private static string? GetTagId(object sender)
     {
         return sender switch
@@ -735,6 +752,51 @@ public sealed partial class SessionPanel : UserControl
         var dialog = new SessionEditDialog(session) { Title = title };
         dialog.Owner = Window.GetWindow(this);
         return dialog.ShowDialog() == true;
+    }
+
+    // --- Snippets ---
+
+    private bool _snippetsVisible = true;
+
+    private void LoadSnippets()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            SnippetStore.Instance.Load();
+            SnippetList.ItemsSource = SnippetStore.Instance.Snippets;
+        });
+    }
+
+    private void ToggleSnippets_Click(object sender, RoutedEventArgs e)
+    {
+        _snippetsVisible = !_snippetsVisible;
+        SnippetList.Visibility = _snippetsVisible ? Visibility.Visible : Visibility.Collapsed;
+        SnippetToggleGlyph.Text = _snippetsVisible ? "\uE70D" : "\uE76C";
+    }
+
+    private void AddSnippet_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new RenameDialog("") { Title = "Snippet Name" };
+        dlg.Owner = Window.GetWindow(this);
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+
+        var cmdDlg = new RenameDialog("") { Title = "Snippet Command" };
+        cmdDlg.Owner = Window.GetWindow(this);
+        if (cmdDlg.ShowDialog() != true || string.IsNullOrWhiteSpace(cmdDlg.ResultName)) return;
+
+        SnippetStore.Instance.Add(new Snippet { Name = dlg.ResultName, Command = cmdDlg.ResultName });
+    }
+
+    private void SnippetDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.Tag is Snippet snippet)
+            SnippetStore.Instance.Remove(snippet);
+    }
+
+    private void SnippetList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (SnippetList.SelectedItem is Snippet snippet)
+            SnippetTriggered?.Invoke(snippet.Command);
     }
 
     private static T? FindParent<T>(DependencyObject? child) where T : DependencyObject
