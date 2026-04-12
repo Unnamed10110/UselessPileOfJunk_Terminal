@@ -1,0 +1,68 @@
+<UserControl
+    x:Class="UselessTerminal.Controls.BrowserPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+    Background="#0a0a0a">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Navigation Bar -->
+        <Border Grid.Row="0" Background="#111111" BorderBrush="#222222" BorderThickness="0,0,0,1" Padding="4,3">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,4,0">
+                    <Button x:Name="BackBtn" Click="BackBtn_Click" ToolTip="Back"
+                            Background="Transparent" BorderThickness="0" Padding="6,3" Cursor="Hand"
+                            Foreground="#999999" FontFamily="Segoe MDL2 Assets" Content="&#xE72B;" FontSize="13" />
+                    <Button x:Name="ForwardBtn" Click="ForwardBtn_Click" ToolTip="Forward"
+                            Background="Transparent" BorderThickness="0" Padding="6,3" Cursor="Hand"
+                            Foreground="#999999" FontFamily="Segoe MDL2 Assets" Content="&#xE72A;" FontSize="13" />
+                    <Button x:Name="RefreshBtn" Click="RefreshBtn_Click" ToolTip="Refresh"
+                            Background="Transparent" BorderThickness="0" Padding="6,3" Cursor="Hand"
+                            Foreground="#999999" FontFamily="Segoe MDL2 Assets" Content="&#xE72C;" FontSize="13" />
+                </StackPanel>
+                <TextBox x:Name="AddressBar" DockPanel.Dock="Left"
+                         Background="#1a1a1a" Foreground="#cccccc" BorderBrush="#333333" BorderThickness="1"
+                         Padding="6,4" FontSize="12" VerticalContentAlignment="Center"
+                         KeyDown="AddressBar_KeyDown" />
+            </DockPanel>
+        </Border>
+
+        <!-- Quick Links -->
+        <Border Grid.Row="1" Background="#0d0d0d" Padding="4,2">
+            <WrapPanel>
+                <Button Content="ChatGPT" Tag="https://chatgpt.com" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="DeepSeek" Tag="https://chat.deepseek.com" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="Claude" Tag="https://claude.ai" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="Gemini" Tag="https://gemini.google.com" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="Copilot" Tag="https://copilot.microsoft.com" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="Perplexity" Tag="https://www.perplexity.ai" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+                <Button Content="Grok" Tag="https://grok.com" Click="QuickLink_Click"
+                        Background="#1a1a1a" Foreground="#aaaaaa" BorderBrush="#333333" BorderThickness="1"
+                        Padding="8,3" Margin="2" Cursor="Hand" FontSize="11" />
+            </WrapPanel>
+        </Border>
+
+        <!-- Browser -->
+        <wv2:WebView2 x:Name="BrowserWebView" Grid.Row="2"
+                      DefaultBackgroundColor="Transparent" />
+    </Grid>
+
+</UserControl>

@@ -37,6 +37,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private readonly CommandNotifier _commandNotifier = new();
     private bool _crtMode;
     private bool _minimapMode;
+    private bool _browserPanelOpen;
+    private double _browserPanelWidth = 500;
 
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
@@ -212,6 +214,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         { if (_activeTab != null) DuplicateTab(_activeTab); e.Handled = true; }
         else if (kb.Matches("quickConnect", ctrl, shift, alt, key))
         { QuickSshConnect(); e.Handled = true; }
+        else if (ctrl && shift && key == Key.B)
+        { ToggleBrowserPanel(); e.Handled = true; }
         else if (kb.Matches("commandPalette", ctrl, shift, alt, key))
         { ShowCommandPalette(); e.Handled = true; }
     }
@@ -308,6 +312,28 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (w >= 160 && w <= 900)
             _sessionPanelWidth = w;
     }
+
+    private void ToggleBrowserPanel()
+    {
+        _browserPanelOpen = !_browserPanelOpen;
+        BrowserPanelColumn.MinWidth = _browserPanelOpen ? 250 : 0;
+        BrowserPanelColumn.Width = _browserPanelOpen
+            ? new GridLength(_browserPanelWidth, GridUnitType.Pixel)
+            : new GridLength(0);
+        BrowserSplitterColumn.Width = _browserPanelOpen
+            ? new GridLength(5)
+            : new GridLength(0);
+    }
+
+    private void BrowserGridSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!_browserPanelOpen || e.Canceled) return;
+        double w = BrowserPanelColumn.ActualWidth;
+        if (w >= 250 && w <= 1600)
+            _browserPanelWidth = w;
+    }
+
+    private void BrowserToggleButton_Click(object sender, RoutedEventArgs e) => ToggleBrowserPanel();
 
     // --- Tab Management ---
 
@@ -1260,6 +1286,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             new() { Id = "newTab", Label = "New Tab", Shortcut = "Ctrl+T" },
             new() { Id = "closeTab", Label = "Close Tab / Pane", Shortcut = "Ctrl+W" },
             new() { Id = "togglePanel", Label = "Toggle Sessions Panel", Shortcut = "Ctrl+B" },
+            new() { Id = "toggleBrowser", Label = "Toggle Browser Panel", Shortcut = "Ctrl+Shift+B" },
             new() { Id = "settings", Label = "Open Settings", Shortcut = "Ctrl+," },
             new() { Id = "duplicateTab", Label = "Duplicate Tab", Shortcut = "Ctrl+Shift+D" },
             new() { Id = "addSession", Label = "New Saved Session", Shortcut = "Ctrl+Shift+N" },
@@ -1295,6 +1322,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             case "newTab": AddDefaultTab(); break;
             case "closeTab": CloseActivePane(); break;
             case "togglePanel": ToggleSessionPanel(); break;
+            case "toggleBrowser": ToggleBrowserPanel(); break;
             case "settings": OpenSettings(); break;
             case "duplicateTab": if (_activeTab != null) DuplicateTab(_activeTab); break;
             case "addSession": SessionPanel.TriggerAddSession(); break;
