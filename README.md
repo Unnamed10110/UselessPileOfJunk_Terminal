@@ -96,6 +96,9 @@ All shortcuts are configurable via `keybindings.json`.
 
 ![View](UselessTerminal_04_04_2026_16_09_09.png)
 
+- Side-Helper
+
+![alt text](IpCwQaZuE6.png)
 
 - Add any default shell
 
