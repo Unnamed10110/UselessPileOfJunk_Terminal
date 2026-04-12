@@ -214,20 +214,21 @@
                         Background="#0a0a0a" BorderBrush="#1a1a1a" BorderThickness="0,1,0,0"
                         Padding="10,0">
                     <DockPanel>
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="StatusShell" Foreground="#6b7280" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,14,0" />
-                            <TextBlock x:Name="StatusPid" Foreground="#4b5563" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,14,0" />
-                            <TextBlock x:Name="StatusCwd" Foreground="#9ca3af" FontSize="10.5"
-                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" />
-                            <TextBlock x:Name="StatusGitBranch" Foreground="#22d3ee" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,14,0" />
-                            <TextBlock x:Name="StatusExitCode" Foreground="#6b7280" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,14,0" />
-                        </StackPanel>
                         <TextBlock x:Name="StatusAlive" DockPanel.Dock="Right" HorizontalAlignment="Right"
                                    Foreground="#22c55e" FontSize="10.5" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatusShell" Foreground="#a1a1aa" FontSize="10.5" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock x:Name="StatusPid" Foreground="#71717a" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock x:Name="StatusCwd" Foreground="#d4d4d8" FontSize="10.5"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       MaxWidth="500" Margin="0,0,12,0" />
+                            <TextBlock x:Name="StatusGitBranch" Foreground="#22d3ee" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock x:Name="StatusExitCode" Foreground="#a1a1aa" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                        </StackPanel>
                     </DockPanel>
                 </Border>
             </Grid>

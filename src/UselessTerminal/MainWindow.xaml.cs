@@ -39,6 +39,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private bool _minimapMode;
     private bool _browserPanelOpen;
     private double _browserPanelWidth = 500;
+    private System.Windows.Forms.NotifyIcon? _trayIcon;
+    private bool _reallyClosing;
 
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
@@ -116,7 +118,16 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             PopulateShellMenu();
             RegisterQuakeHotkey();
             ApplyWindowBackdrop(SettingsStore.Instance.Current.WindowBackdrop);
+            InitializeTrayIcon();
+
+            var statusTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            statusTimer.Tick += (_, _) => RefreshStatusBar();
+            statusTimer.Start();
         };
+        StateChanged += MainWindow_StateChanged;
         Activated += (_, _) =>
         {
             _commandNotifier.WindowIsActive = true;
@@ -173,12 +184,50 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         }
         else
         {
-            Show();
-            if (WindowState == System.Windows.WindowState.Minimized)
-                WindowState = System.Windows.WindowState.Normal;
-            Activate();
-            _activeTab?.Control.FocusTerminal();
+            ShowFromTray();
         }
+    }
+
+    // --- System Tray ---
+
+    private void InitializeTrayIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        var icon = File.Exists(iconPath)
+            ? new System.Drawing.Icon(iconPath)
+            : System.Drawing.SystemIcons.Application;
+
+        var trayMenu = new System.Windows.Forms.ContextMenuStrip();
+        trayMenu.Items.Add("Show / Hide", null, (_, _) => Dispatcher.Invoke(ToggleQuakeMode));
+        trayMenu.Items.Add("New Tab", null, (_, _) => Dispatcher.Invoke(() => { ShowFromTray(); AddDefaultTab(); }));
+        trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+        trayMenu.Items.Add("Settings", null, (_, _) => Dispatcher.Invoke(() => { ShowFromTray(); OpenSettings(); }));
+        trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+        trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(() => { _reallyClosing = true; Close(); }));
+
+        _trayIcon = new System.Windows.Forms.NotifyIcon
+        {
+            Icon = icon,
+            Text = "Useless Terminal",
+            Visible = true,
+            ContextMenuStrip = trayMenu
+        };
+        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        if (WindowState == System.Windows.WindowState.Minimized)
+            WindowState = System.Windows.WindowState.Normal;
+        Activate();
+        _activeTab?.Control.FocusTerminal();
+    }
+
+    private void MainWindow_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == System.Windows.WindowState.Minimized)
+            Hide();
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -353,7 +402,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         {
             Title = title,
             Command = command,
-            WorkingDirectory = workingDirectory,
+            WorkingDirectory = workingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             StartingCommand = startingCommand,
             Control = termControl,
             Container = container,
@@ -697,6 +746,14 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         UpdatePaneFocusVisuals(tab);
         (tab.FocusedPane ?? tab.Control).FocusTerminal();
         RefreshStatusBar();
+
+        ScheduleStatusBarRefresh();
+    }
+
+    private void ScheduleStatusBarRefresh()
+    {
+        Task.Delay(800).ContinueWith(_ => Dispatcher.InvokeAsync(RefreshStatusBar), TaskScheduler.Default);
+        Task.Delay(2500).ContinueWith(_ => Dispatcher.InvokeAsync(RefreshStatusBar), TaskScheduler.Default);
     }
 
     private void CloseTab(TerminalTabState tab)
@@ -1532,6 +1589,13 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        if (!_reallyClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
         if (HasRunningProcesses())
         {
             var result = System.Windows.MessageBox.Show(
@@ -1541,9 +1605,17 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 System.Windows.MessageBoxImage.Warning);
             if (result != System.Windows.MessageBoxResult.Yes)
             {
+                _reallyClosing = false;
                 e.Cancel = true;
                 return;
             }
+        }
+
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
         }
 
         UnregisterQuakeHotkey();
@@ -1757,45 +1829,52 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void RefreshStatusBar()
     {
-        if (_activeTab is null)
+        try
         {
-            StatusShell.Text = StatusPid.Text = StatusCwd.Text = StatusGitBranch.Text = StatusAlive.Text = "";
-            return;
-        }
+            if (_activeTab is null)
+            {
+                StatusShell.Text = StatusPid.Text = StatusCwd.Text = StatusGitBranch.Text = StatusAlive.Text = StatusExitCode.Text = "";
+                return;
+            }
 
-        var pane = _activeTab.FocusedPane ?? _activeTab.Control;
-        string cmd = _activeTab.Command;
-        string exe = ShellGlyphResolver.ParseExecutable(cmd);
-        string shellName = Path.GetFileNameWithoutExtension(string.IsNullOrEmpty(exe) ? cmd : exe);
-        StatusShell.Text = shellName;
+            var pane = _activeTab.FocusedPane ?? _activeTab.Control;
+            string cmd = _activeTab.Command;
+            string exe = ShellGlyphResolver.ParseExecutable(cmd);
+            string shellName = Path.GetFileNameWithoutExtension(string.IsNullOrEmpty(exe) ? cmd : exe);
+            StatusShell.Text = shellName;
 
-        int pid = pane.SessionProcessId;
-        StatusPid.Text = pid > 0 ? $"PID {pid}" : "";
+            int pid = pane.SessionProcessId;
+            StatusPid.Text = pid > 0 ? $"PID {pid}" : "";
 
-        string cwd = pane.CurrentWorkingDirectory ?? _activeTab.WorkingDirectory ?? "";
-        StatusCwd.Text = cwd;
+            string cwd = pane.CurrentWorkingDirectory
+                ?? _activeTab.WorkingDirectory
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            StatusCwd.Text = "\uD83D\uDCC2 " + cwd;
 
-        StatusGitBranch.Text = GetGitBranch(cwd);
+            string branch = GetGitBranch(cwd);
+            StatusGitBranch.Text = branch;
 
-        if (!string.IsNullOrEmpty(_activeTab.LastExitCode) && _activeTab.LastExitCode != "0")
-        {
-            StatusExitCode.Text = $"exit: {_activeTab.LastExitCode}";
-            StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x3C));
-        }
-        else if (_activeTab.LastExitCode == "0")
-        {
-            StatusExitCode.Text = "exit: 0";
-            StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E));
-        }
-        else
-        {
-            StatusExitCode.Text = "";
-        }
+            if (!string.IsNullOrEmpty(_activeTab.LastExitCode) && _activeTab.LastExitCode != "0")
+            {
+                StatusExitCode.Text = $"exit: {_activeTab.LastExitCode}";
+                StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x3C));
+            }
+            else if (_activeTab.LastExitCode == "0")
+            {
+                StatusExitCode.Text = "exit: 0";
+                StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E));
+            }
+            else
+            {
+                StatusExitCode.Text = "";
+            }
 
-        StatusAlive.Text = pane.IsSessionAlive ? "\u25CF running" : "\u25CB exited";
+            StatusAlive.Text = pane.IsSessionAlive ? "\u25CF running" : "\u25CB exited";
         StatusAlive.Foreground = pane.IsSessionAlive
             ? new SolidColorBrush(Color.FromRgb(0x22, 0xc5, 0x5e))
             : new SolidColorBrush(Color.FromRgb(0x6b, 0x72, 0x80));
+        }
+        catch { }
     }
 
     private static string GetGitBranch(string? directory)

@@ -637,7 +637,7 @@
         if (!searchAddon || !query) return;
         searchInput.value = query;
         if (!searchVisible) toggleSearch();
-        searchAddon.findNext(query, { decorations: searchDecorations });
+        searchAddon.findNext(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
     };
 
     // --- Signal ready ---
