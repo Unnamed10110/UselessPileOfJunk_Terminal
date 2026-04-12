@@ -1,10 +1,14 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Controls.Primitives;
+using Microsoft.Win32;
 using UselessTerminal.Controls;
 using UselessTerminal.Models;
 using UselessTerminal.Services;
@@ -24,6 +28,19 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private TerminalTabState? _tabDragSource;
     private Point _tabDragMouseDown;
     private const double TabDragThreshold = 6;
+
+    // Quake-mode global hotkey
+    private const int HOTKEY_ID_QUAKE = 0x7001;
+    private const int MOD_WIN = 0x0008;
+    private HwndSource? _hwndSource;
+    private bool _quakeRegistered;
+    private readonly CommandNotifier _commandNotifier = new();
+    private bool _crtMode;
+    private bool _minimapMode;
+
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
+    [DllImport("user32.dll")] private static extern bool FlashWindow(nint hWnd, bool invert);
 
     private static readonly string[] TabColors =
     [
@@ -74,7 +91,18 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             string? workDir = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? null : session.WorkingDirectory;
             string? startCmd = string.IsNullOrWhiteSpace(session.StartingCommand) ? null : session.StartingCommand;
             string? clr = string.IsNullOrWhiteSpace(session.ColorTag) ? null : session.ColorTag;
-            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true);
+            string? themeBg = string.IsNullOrWhiteSpace(session.ThemeBackground) ? null : session.ThemeBackground;
+            int themeFontSize = session.ThemeFontSize;
+            Dictionary<string, string>? envVars = ParseEnvVars(session.EnvironmentVariables);
+            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true, sessionThemeBg: themeBg, sessionFontSize: themeFontSize, extraEnv: envVars);
+        };
+
+        SessionPanel.SnippetTriggered += cmd =>
+        {
+            if (_activeTab is null) return;
+            var pane = _activeTab.FocusedPane ?? _activeTab.Control;
+            pane.SendCommand(cmd);
+            pane.FocusTerminal();
         };
 
         SettingsStore.Instance.Load();
@@ -84,8 +112,71 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         {
             RestoreWindowState();
             PopulateShellMenu();
+            RegisterQuakeHotkey();
+            ApplyWindowBackdrop(SettingsStore.Instance.Current.WindowBackdrop);
         };
+        Activated += (_, _) =>
+        {
+            _commandNotifier.WindowIsActive = true;
+            _commandNotifier.Reset();
+        };
+        Deactivated += (_, _) => _commandNotifier.WindowIsActive = false;
+        _commandNotifier.CommandFinished += ShowCommandNotification;
+
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+    }
+
+    private void RegisterQuakeHotkey()
+    {
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            _hwndSource = HwndSource.FromHwnd(helper.Handle);
+            _hwndSource?.AddHook(WndProc);
+            // Win + ` (backtick / OemTilde = 0xC0)
+            _quakeRegistered = RegisterHotKey(helper.Handle, HOTKEY_ID_QUAKE, MOD_WIN, 0xC0);
+        }
+        catch { }
+    }
+
+    private void UnregisterQuakeHotkey()
+    {
+        if (!_quakeRegistered) return;
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            UnregisterHotKey(helper.Handle, HOTKEY_ID_QUAKE);
+            _hwndSource?.RemoveHook(WndProc);
+        }
+        catch { }
+        _quakeRegistered = false;
+    }
+
+    private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        const int WM_HOTKEY = 0x0312;
+        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_QUAKE)
+        {
+            ToggleQuakeMode();
+            handled = true;
+        }
+        return nint.Zero;
+    }
+
+    private void ToggleQuakeMode()
+    {
+        if (Visibility == Visibility.Visible && IsActive)
+        {
+            Hide();
+        }
+        else
+        {
+            Show();
+            if (WindowState == System.Windows.WindowState.Minimized)
+                WindowState = System.Windows.WindowState.Normal;
+            Activate();
+            _activeTab?.Control.FocusTerminal();
+        }
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -93,52 +184,36 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var kb = KeyBindingConfig.Instance;
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
 
-        if (ctrl && e.Key == Key.Tab)
+        if (kb.Matches("nextTab", ctrl, shift, alt, key) && !shift)
+        { SelectNextTab(); e.Handled = true; }
+        else if (kb.Matches("prevTab", ctrl, shift, alt, key))
+        { SelectPreviousTab(); e.Handled = true; }
+        else if (ctrl && !alt && key >= Key.D1 && key <= Key.D9)
         {
-            if (shift) SelectPreviousTab(); else SelectNextTab();
-            e.Handled = true;
+            int index = key - Key.D1;
+            if (index < _tabs.Count) { TabStrip.SelectedItem = _tabs[index].TabItem; e.Handled = true; }
         }
-        else if (ctrl && !alt && e.Key >= Key.D1 && e.Key <= Key.D9)
+        else if (ctrl && alt && key >= Key.NumPad0 && key <= Key.NumPad9)
         {
-            int index = e.Key - Key.D1;
-            if (index < _tabs.Count)
-            {
-                TabStrip.SelectedItem = _tabs[index].TabItem;
-                e.Handled = true;
-            }
-        }
-        else if (ctrl && alt && e.SystemKey >= Key.NumPad0 && e.SystemKey <= Key.NumPad9)
-        {
-            int index = e.SystemKey - Key.NumPad0 - 1;
+            int index = key - Key.NumPad0 - 1;
             if (index < 0) index = 9;
-            if (index < _tabs.Count)
-            {
-                TabStrip.SelectedItem = _tabs[index].TabItem;
-                e.Handled = true;
-            }
+            if (index < _tabs.Count) { TabStrip.SelectedItem = _tabs[index].TabItem; e.Handled = true; }
         }
-        else if (ctrl && shift && (e.Key == Key.Left || e.Key == Key.Right ||
-                                    e.Key == Key.Up || e.Key == Key.Down))
-        {
-            MovePaneFocus(e.Key);
-            e.Handled = true;
-        }
-        else if (ctrl && shift && e.Key == Key.N)
-        {
-            SessionPanel.TriggerAddSession();
-            e.Handled = true;
-        }
-        else if (ctrl && e.Key == Key.OemComma)
-        {
-            OpenSettings();
-            e.Handled = true;
-        }
-        else if (ctrl && shift && e.Key == Key.D)
-        {
-            if (_activeTab != null) DuplicateTab(_activeTab);
-            e.Handled = true;
-        }
+        else if (kb.Matches("movePaneFocus", ctrl, shift, alt, key))
+        { MovePaneFocus(key); e.Handled = true; }
+        else if (kb.Matches("newSession", ctrl, shift, alt, key))
+        { SessionPanel.TriggerAddSession(); e.Handled = true; }
+        else if (kb.Matches("settings", ctrl, shift, alt, key))
+        { OpenSettings(); e.Handled = true; }
+        else if (kb.Matches("duplicateTab", ctrl, shift, alt, key))
+        { if (_activeTab != null) DuplicateTab(_activeTab); e.Handled = true; }
+        else if (kb.Matches("quickConnect", ctrl, shift, alt, key))
+        { QuickSshConnect(); e.Handled = true; }
+        else if (kb.Matches("commandPalette", ctrl, shift, alt, key))
+        { ShowCommandPalette(); e.Handled = true; }
     }
 
     private void MovePaneFocus(Key direction)
@@ -236,10 +311,16 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     // --- Tab Management ---
 
-    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false)
+    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false, string? sessionThemeBg = null, int sessionFontSize = 0, Dictionary<string, string>? extraEnv = null)
     {
         var container = new Grid { Visibility = Visibility.Collapsed };
         var termControl = new TerminalControl();
+        if (!string.IsNullOrWhiteSpace(sessionThemeBg))
+            termControl.SessionThemeBackground = sessionThemeBg;
+        if (sessionFontSize > 0)
+            termControl.SessionFontSize = sessionFontSize;
+        if (extraEnv is { Count: > 0 })
+            termControl.ExtraEnvironment = extraEnv;
         container.Children.Add(termControl);
 
         var tabState = new TerminalTabState
@@ -275,6 +356,61 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         };
 
         termControl.PaneFocused += pane => OnPaneFocused(tabState, pane);
+
+        termControl.BellRang += () => Dispatcher.Invoke(() => FlashTabOnBell(tabState));
+
+        termControl.BufferExportRequested += text => Dispatcher.Invoke(() => ExportBufferToFile(text));
+
+        termControl.OutputProduced += () => Dispatcher.InvokeAsync(() =>
+        {
+            if (_activeTab != tabState && !tabState.HasActivity)
+            {
+                tabState.HasActivity = true;
+                UpdateTabHeader(tabState);
+            }
+            _commandNotifier.OnOutputReceived(tabState.Title);
+        });
+
+        termControl.CwdChanged += cwd => Dispatcher.Invoke(() =>
+        {
+            if (_activeTab == tabState)
+            {
+                string baseName = ElevationHelper.IsProcessElevated() ? "Useless Terminal — Administrator" : "Useless Terminal By Unnamed10110";
+                Title = $"{baseName}  —  {cwd}";
+                RefreshStatusBar();
+            }
+        });
+
+        termControl.RawOutputReceived += data =>
+        {
+            tabState.Logger.Write(data);
+            tabState.Recorder.WriteOutput(data);
+        };
+
+        termControl.ShellIntegrationEvent += marker => Dispatcher.InvokeAsync(() =>
+        {
+            if (marker.StartsWith("D"))
+            {
+                string code = marker.Length > 2 ? marker[2..] : "";
+                tabState.LastExitCode = code;
+                if (_activeTab == tabState) RefreshStatusBar();
+            }
+        });
+
+        termControl.SearchAllTabsRequested += query => Dispatcher.InvokeAsync(() =>
+        {
+            string escaped = System.Text.Json.JsonSerializer.Serialize(query);
+            foreach (var tab in _tabs)
+            {
+                foreach (var pane in tab.AllPanes)
+                {
+                    if (pane != termControl)
+                        pane.ExecuteScript($"window.termSearchAll({escaped})");
+                }
+            }
+        });
+
+        WireBroadcast(tabState, termControl);
 
         TerminalHost.Children.Add(container);
         _tabs.Add(tabState);
@@ -413,6 +549,20 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (index < 0) return;
 
         var stack = new StackPanel { Orientation = Orientation.Horizontal };
+
+        if (tab.Pinned)
+        {
+            stack.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "\uE718",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
+                Margin = new Thickness(0, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
         var icon = new System.Windows.Controls.Image
         {
             Source = ShellIconLoader.GetIconForCommand(tab.Command),
@@ -424,12 +574,62 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         };
         RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
         stack.Children.Add(icon);
+
+        if (!string.IsNullOrEmpty(tab.GroupName))
+        {
+            stack.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = tab.GroupName,
+                FontSize = 8,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x8C, 0xF8)),
+                Margin = new Thickness(0, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
         stack.Children.Add(new System.Windows.Controls.TextBlock
         {
-            Text = $"{index + 1}  {tab.Title}",
+            Text = tab.Pinned ? "" : $"{index + 1}  {tab.Title}",
             FontSize = 10,
             VerticalAlignment = VerticalAlignment.Center,
         });
+
+        if (tab.ReadOnly)
+        {
+            stack.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "\uE72E",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 9,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xAA, 0x00)),
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
+        if (tab.Logger.IsLogging)
+        {
+            stack.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = 6, Height = 6,
+                Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x3C)),
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Logging",
+            });
+        }
+
+        if (tab.HasActivity && _activeTab != tab)
+        {
+            stack.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = 6, Height = 6,
+                Fill = new SolidColorBrush(Color.FromRgb(0x00, 0xFF, 0x44)),
+                Margin = new Thickness(5, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
         tab.TabItem.Header = stack;
     }
 
@@ -451,6 +651,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         _activeTab = tab;
         tab.Container.Visibility = Visibility.Visible;
+        tab.HasActivity = false;
+        UpdateTabHeader(tab);
 
         if (!tab.Started)
         {
@@ -468,6 +670,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (tab.FocusedPane is null) tab.FocusedPane = tab.Control;
         UpdatePaneFocusVisuals(tab);
         (tab.FocusedPane ?? tab.Control).FocusTerminal();
+        RefreshStatusBar();
     }
 
     private void CloseTab(TerminalTabState tab)
@@ -478,6 +681,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         TerminalHost.Children.Remove(tab.Container);
         foreach (var pane in tab.ExtraPanes) pane.Dispose();
         tab.Control.Dispose();
+        tab.Logger.Dispose();
+        tab.Recorder.Dispose();
 
         if (_tabs.Count == 0)
         {
@@ -512,6 +717,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             BorderBrush = new SolidColorBrush(ParseHexColor("#555555")),
             BorderThickness = new Thickness(1)
         };
+
+        var pinItem = new MenuItem { Header = tab.Pinned ? "Unpin Tab" : "Pin Tab" };
+        pinItem.Click += (_, _) => TogglePinTab(tab);
+        menu.Items.Add(pinItem);
 
         var rename = new MenuItem { Header = "Rename Tab" };
         rename.Click += (_, _) => RenameTab(tab);
@@ -548,6 +757,26 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         var unsplit = new MenuItem { Header = "Unsplit All" };
         unsplit.Click += (_, _) => UnsplitTab(tab);
         menu.Items.Add(unsplit);
+
+        var broadcast = new MenuItem { Header = tab.BroadcastInput ? "Stop Broadcast Input" : "Broadcast Input to Panes" };
+        broadcast.Click += (_, _) => ToggleBroadcastInput(tab);
+        menu.Items.Add(broadcast);
+
+        var logItem = new MenuItem { Header = tab.Logger.IsLogging ? "Stop Logging" : "Start Logging" };
+        logItem.Click += (_, _) => ToggleLogging(tab);
+        menu.Items.Add(logItem);
+
+        var recordItem = new MenuItem { Header = tab.Recorder.IsRecording ? "Stop Recording (.cast)" : "Start Recording (.cast)" };
+        recordItem.Click += (_, _) => ToggleRecording(tab);
+        menu.Items.Add(recordItem);
+
+        var readOnlyItem = new MenuItem { Header = tab.ReadOnly ? "Disable Read-Only" : "Read-Only Mode" };
+        readOnlyItem.Click += (_, _) => ToggleReadOnly(tab);
+        menu.Items.Add(readOnlyItem);
+
+        var groupItem = new MenuItem { Header = string.IsNullOrEmpty(tab.GroupName) ? "Set Tab Group" : $"Tab Group: {tab.GroupName}" };
+        groupItem.Click += (_, _) => SetTabGroup(tab);
+        menu.Items.Add(groupItem);
 
         menu.Items.Add(new Separator());
 
@@ -650,6 +879,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         tab.Container.Children.Add(newPane);
 
         newPane.PaneFocused += pane => OnPaneFocused(tab, pane);
+        WireBroadcast(tab, newPane);
+        newPane.BellRang += () => Dispatcher.Invoke(() => FlashTabOnBell(tab));
+        newPane.BufferExportRequested += text => Dispatcher.Invoke(() => ExportBufferToFile(text));
         RebuildSplitLayout(tab);
         newPane.StartSession(tab.Command, tab.WorkingDirectory);
         UpdatePaneFocusVisuals(tab);
@@ -660,6 +892,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (tab.FocusedPane == pane) return;
         tab.FocusedPane = pane;
         UpdatePaneFocusVisuals(tab);
+        if (_activeTab == tab)
+            RefreshStatusBar();
     }
 
     private static void UpdatePaneFocusVisuals(TerminalTabState tab)
@@ -678,6 +912,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         if (_activeTab is null) return;
         var tab = _activeTab;
+
+        if (tab.Pinned && tab.PaneCount <= 1)
+            return;
 
         if (tab.PaneCount <= 1)
         {
@@ -944,6 +1181,199 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         }
     }
 
+    // --- Bell / Activity ---
+
+    private void FlashTabOnBell(TerminalTabState tab)
+    {
+        if (_activeTab == tab) return;
+        tab.HasActivity = true;
+        UpdateTabHeader(tab);
+    }
+
+    // --- Export buffer ---
+
+    private void ExportBufferToFile(string text)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Filter = "Text files|*.txt|Log files|*.log|All files|*.*",
+            FileName = "terminal-output.txt",
+            DefaultExt = ".txt"
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            try { File.WriteAllText(dlg.FileName, text); }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not save file.\n\n{ex.Message}", "Export",
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
+        }
+    }
+
+    // --- Pin tab ---
+
+    private void TogglePinTab(TerminalTabState tab)
+    {
+        tab.Pinned = !tab.Pinned;
+        if (tab.Pinned)
+        {
+            int pi = 0;
+            foreach (var t in _tabs)
+            {
+                if (t == tab) break;
+                if (t.Pinned) pi++;
+            }
+            int from = _tabs.IndexOf(tab);
+            if (from > pi)
+                MoveTab(from, pi);
+        }
+        RenumberTabs();
+    }
+
+    // --- Broadcast input ---
+
+    private void ToggleBroadcastInput(TerminalTabState tab)
+    {
+        tab.BroadcastInput = !tab.BroadcastInput;
+    }
+
+    private static void WireBroadcast(TerminalTabState tabState, TerminalControl source)
+    {
+        source.InputBroadcast += data =>
+        {
+            if (!tabState.BroadcastInput) return;
+            foreach (var pane in tabState.AllPanes)
+            {
+                if (pane == source) continue;
+                pane.SendCommand(data.Replace("\r", "").Replace("\n", ""));
+            }
+        };
+    }
+
+    // --- Command Palette ---
+
+    private void ShowCommandPalette()
+    {
+        var entries = new List<PaletteEntry>
+        {
+            new() { Id = "newTab", Label = "New Tab", Shortcut = "Ctrl+T" },
+            new() { Id = "closeTab", Label = "Close Tab / Pane", Shortcut = "Ctrl+W" },
+            new() { Id = "togglePanel", Label = "Toggle Sessions Panel", Shortcut = "Ctrl+B" },
+            new() { Id = "settings", Label = "Open Settings", Shortcut = "Ctrl+," },
+            new() { Id = "duplicateTab", Label = "Duplicate Tab", Shortcut = "Ctrl+Shift+D" },
+            new() { Id = "addSession", Label = "New Saved Session", Shortcut = "Ctrl+Shift+N" },
+            new() { Id = "splitPane", Label = "Add Pane (Split)" },
+            new() { Id = "unsplitAll", Label = "Unsplit All Panes" },
+            new() { Id = "renameTab", Label = "Rename Tab" },
+            new() { Id = "pinTab", Label = "Pin / Unpin Tab" },
+            new() { Id = "broadcastToggle", Label = "Toggle Broadcast Input" },
+            new() { Id = "nextTab", Label = "Next Tab", Shortcut = "Ctrl+Tab" },
+            new() { Id = "prevTab", Label = "Previous Tab", Shortcut = "Ctrl+Shift+Tab" },
+            new() { Id = "closeOthers", Label = "Close Other Tabs" },
+            new() { Id = "closeRight", Label = "Close Tabs to the Right" },
+            new() { Id = "quake", Label = "Toggle Window (Quake Mode)", Shortcut = "Win+`" },
+            new() { Id = "quickConnect", Label = "Quick SSH Connect", Shortcut = "Ctrl+Shift+O" },
+            new() { Id = "toggleLog", Label = "Toggle Session Logging" },
+            new() { Id = "toggleReadOnly", Label = "Toggle Read-Only Mode" },
+            new() { Id = "toggleRecording", Label = "Toggle Recording (asciicast)" },
+            new() { Id = "toggleCrt", Label = "Toggle Retro CRT Mode" },
+            new() { Id = "findAllTabs", Label = "Find in All Tabs" },
+            new() { Id = "toggleMinimap", Label = "Toggle Minimap Scrollbar" },
+            new() { Id = "saveWorkspace", Label = "Save Current Tabs as Workspace" },
+        };
+
+        WorkspaceStore.Instance.Load();
+        foreach (var ws in WorkspaceStore.Instance.Workspaces)
+            entries.Add(new PaletteEntry { Id = $"ws:{ws.Id}", Label = $"Open Workspace: {ws.Name}" });
+
+        var dlg = new CommandPaletteDialog(entries) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.SelectedActionId is null) return;
+
+        switch (dlg.SelectedActionId)
+        {
+            case "newTab": AddDefaultTab(); break;
+            case "closeTab": CloseActivePane(); break;
+            case "togglePanel": ToggleSessionPanel(); break;
+            case "settings": OpenSettings(); break;
+            case "duplicateTab": if (_activeTab != null) DuplicateTab(_activeTab); break;
+            case "addSession": SessionPanel.TriggerAddSession(); break;
+            case "splitPane": if (_activeTab != null) SplitTab(_activeTab, Orientation.Horizontal); break;
+            case "unsplitAll": if (_activeTab != null) UnsplitTab(_activeTab); break;
+            case "renameTab": if (_activeTab != null) RenameTab(_activeTab); break;
+            case "pinTab": if (_activeTab != null) TogglePinTab(_activeTab); break;
+            case "broadcastToggle": if (_activeTab != null) ToggleBroadcastInput(_activeTab); break;
+            case "nextTab": SelectNextTab(); break;
+            case "prevTab": SelectPreviousTab(); break;
+            case "closeOthers": if (_activeTab != null) CloseOtherTabs(_activeTab); break;
+            case "closeRight": if (_activeTab != null) CloseTabsToRight(_activeTab); break;
+            case "quake": ToggleQuakeMode(); break;
+            case "quickConnect": QuickSshConnect(); break;
+            case "toggleLog": if (_activeTab != null) ToggleLogging(_activeTab); break;
+            case "toggleReadOnly": if (_activeTab != null) ToggleReadOnly(_activeTab); break;
+            case "toggleRecording": if (_activeTab != null) ToggleRecording(_activeTab); break;
+            case "toggleCrt": ToggleCrtMode(); break;
+            case "findAllTabs": FindInAllTabs(); break;
+            case "toggleMinimap": ToggleMinimap(); break;
+            case "saveWorkspace": SaveCurrentAsWorkspace(); break;
+            default:
+                if (dlg.SelectedActionId.StartsWith("ws:"))
+                    LaunchWorkspace(dlg.SelectedActionId[3..]);
+                break;
+        }
+    }
+
+    private void SaveCurrentAsWorkspace()
+    {
+        var dlg = new RenameDialog("My Workspace") { Title = "Workspace Name", Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+
+        var ws = new WorkspaceProfile { Name = dlg.ResultName };
+        foreach (var tab in _tabs)
+        {
+            ws.Tabs.Add(new WorkspaceTab
+            {
+                Title = tab.Title,
+                Command = tab.Command,
+                WorkingDirectory = tab.WorkingDirectory,
+                StartingCommand = tab.StartingCommand,
+            });
+        }
+        WorkspaceStore.Instance.Add(ws);
+    }
+
+    private void LaunchWorkspace(string workspaceId)
+    {
+        var ws = WorkspaceStore.Instance.Workspaces.FirstOrDefault(w => w.Id == workspaceId);
+        if (ws is null) return;
+
+        var sessionStore = new SessionStore();
+        sessionStore.Load();
+
+        foreach (var wt in ws.Tabs)
+        {
+            if (!string.IsNullOrEmpty(wt.SessionId))
+            {
+                var session = sessionStore.FindById(wt.SessionId);
+                if (session is not null)
+                {
+                    string cmd = session.GetFullCommand();
+                    string? wd = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? null : session.WorkingDirectory;
+                    string? sc = string.IsNullOrWhiteSpace(session.StartingCommand) ? null : session.StartingCommand;
+                    string? clr = string.IsNullOrWhiteSpace(session.ColorTag) ? null : session.ColorTag;
+                    AddTab(session.Name, cmd, wd, sc, clr, lockTitle: true);
+                    continue;
+                }
+            }
+
+            string command = string.IsNullOrWhiteSpace(wt.Command)
+                ? ShellDetector.GetDefaultShell()
+                : wt.Command;
+            string title = string.IsNullOrWhiteSpace(wt.Title) ? "Terminal" : wt.Title;
+            AddTab(title, command, wt.WorkingDirectory, wt.StartingCommand);
+        }
+    }
+
     // --- Settings ---
 
     private void OpenSettings()
@@ -961,6 +1391,23 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             foreach (var pane in tab.ExtraPanes)
                 pane.ApplySettings(settings);
         }
+        ApplyWindowBackdrop(settings.WindowBackdrop);
+    }
+
+    private void ApplyWindowBackdrop(string backdrop)
+    {
+        WindowBackdropType type = backdrop switch
+        {
+            "Mica" => WindowBackdropType.Mica,
+            "Acrylic" => WindowBackdropType.Acrylic,
+            _ => WindowBackdropType.None
+        };
+        WindowBackdropType = type;
+
+        if (type == WindowBackdropType.None)
+            Background = new SolidColorBrush(Color.FromRgb(0, 0, 0));
+        else
+            Background = Brushes.Transparent;
     }
 
     // --- Window State ---
@@ -1057,6 +1504,21 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        if (HasRunningProcesses())
+        {
+            var result = System.Windows.MessageBox.Show(
+                "One or more terminal sessions are still running.\n\nClose anyway?",
+                "Useless Terminal",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (result != System.Windows.MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        UnregisterQuakeHotkey();
         SaveWindowState();
 
         foreach (var tab in _tabs)
@@ -1067,6 +1529,17 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         _tabs.Clear();
         TerminalHost.Children.Clear();
         base.OnClosing(e);
+    }
+
+    private bool HasRunningProcesses()
+    {
+        foreach (var tab in _tabs)
+        {
+            if (tab.Control.IsSessionAlive) return true;
+            foreach (var p in tab.ExtraPanes)
+                if (p.IsSessionAlive) return true;
+        }
+        return false;
     }
 
     // --- Helpers ---
@@ -1095,6 +1568,234 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             Convert.ToByte(hex[4..6], 16));
     }
 
+    private static Dictionary<string, string>? ParseEnvVars(string? envText)
+    {
+        if (string.IsNullOrWhiteSpace(envText)) return null;
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in envText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = line.IndexOf('=');
+            if (eq <= 0) continue;
+            string key = line[..eq].Trim();
+            string val = line[(eq + 1)..].Trim();
+            if (!string.IsNullOrEmpty(key))
+                dict[key] = val;
+        }
+        return dict.Count > 0 ? dict : null;
+    }
+
+    // --- Quick Connect ---
+
+    private void QuickSshConnect()
+    {
+        var dlg = new RenameDialog("") { Title = "Quick SSH Connect (user@host or user@host:port)", Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+
+        string input = dlg.ResultName.Trim();
+        string sshExe = FindSshExe();
+        string args;
+
+        int colonIdx = input.LastIndexOf(':');
+        if (colonIdx > 0 && int.TryParse(input[(colonIdx + 1)..], out int port))
+        {
+            string hostPart = input[..colonIdx];
+            args = $"-p {port} {hostPart}";
+        }
+        else
+        {
+            args = input;
+        }
+
+        string command = $"\"{sshExe}\" {args}";
+        AddTab($"SSH: {input}", command, color: "#6be5ff");
+    }
+
+    private static string FindSshExe()
+    {
+        string system32Ssh = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "OpenSSH", "ssh.exe");
+        if (File.Exists(system32Ssh)) return system32Ssh;
+
+        string progFiles = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "Git", "usr", "bin", "ssh.exe");
+        if (File.Exists(progFiles)) return progFiles;
+
+        return "ssh";
+    }
+
+    // --- Logging ---
+
+    private void ToggleLogging(TerminalTabState tab)
+    {
+        if (tab.Logger.IsLogging)
+        {
+            tab.Logger.Stop();
+        }
+        else
+        {
+            tab.Logger.Start(tab.Title);
+        }
+        tab.TabItem.ContextMenu = BuildTabContextMenu(tab);
+        UpdateTabHeader(tab);
+    }
+
+    private void ToggleRecording(TerminalTabState tab)
+    {
+        if (tab.Recorder.IsRecording)
+            tab.Recorder.Stop();
+        else
+            tab.Recorder.Start(tab.Title);
+        tab.TabItem.ContextMenu = BuildTabContextMenu(tab);
+        UpdateTabHeader(tab);
+    }
+
+    private void ToggleMinimap()
+    {
+        _minimapMode = !_minimapMode;
+        string js = $"window.termToggleMinimap({(_minimapMode ? "true" : "false")})";
+        foreach (var tab in _tabs)
+        {
+            tab.Control.ExecuteScript(js);
+            foreach (var pane in tab.ExtraPanes)
+                pane.ExecuteScript(js);
+        }
+    }
+
+    private void FindInAllTabs()
+    {
+        var dlg = new RenameDialog("") { Title = "Find in All Tabs", Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+
+        string term = System.Text.Json.JsonSerializer.Serialize(dlg.ResultName);
+        foreach (var tab in _tabs)
+        {
+            tab.Control.ExecuteScript($"window.termSearchAll({term})");
+            foreach (var pane in tab.ExtraPanes)
+                pane.ExecuteScript($"window.termSearchAll({term})");
+        }
+    }
+
+    private void ToggleCrtMode()
+    {
+        _crtMode = !_crtMode;
+        string js = $"window.termToggleCRT({(_crtMode ? "true" : "false")})";
+        foreach (var tab in _tabs)
+        {
+            tab.Control.ExecuteScript(js);
+            foreach (var pane in tab.ExtraPanes)
+                pane.ExecuteScript(js);
+        }
+    }
+
+    // --- Tab Groups ---
+
+    private void SetTabGroup(TerminalTabState tab)
+    {
+        string current = tab.GroupName ?? "";
+        var dlg = new RenameDialog(current) { Title = "Tab Group Name (empty to remove)", Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        tab.GroupName = string.IsNullOrWhiteSpace(dlg.ResultName) ? null : dlg.ResultName.Trim();
+        tab.TabItem.ContextMenu = BuildTabContextMenu(tab);
+        UpdateTabHeader(tab);
+    }
+
+    // --- Read-Only ---
+
+    private void ToggleReadOnly(TerminalTabState tab)
+    {
+        tab.ReadOnly = !tab.ReadOnly;
+        foreach (var pane in tab.AllPanes)
+            pane.ReadOnly = tab.ReadOnly;
+        tab.TabItem.ContextMenu = BuildTabContextMenu(tab);
+        UpdateTabHeader(tab);
+    }
+
+    // --- Notifications ---
+
+    private void ShowCommandNotification(string tabTitle)
+    {
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            if (helper.Handle != nint.Zero)
+                FlashWindow(helper.Handle, true);
+        }
+        catch { }
+    }
+
+    // --- Status Bar ---
+
+    private void RefreshStatusBar()
+    {
+        if (_activeTab is null)
+        {
+            StatusShell.Text = StatusPid.Text = StatusCwd.Text = StatusGitBranch.Text = StatusAlive.Text = "";
+            return;
+        }
+
+        var pane = _activeTab.FocusedPane ?? _activeTab.Control;
+        string cmd = _activeTab.Command;
+        string exe = ShellGlyphResolver.ParseExecutable(cmd);
+        string shellName = Path.GetFileNameWithoutExtension(string.IsNullOrEmpty(exe) ? cmd : exe);
+        StatusShell.Text = shellName;
+
+        int pid = pane.SessionProcessId;
+        StatusPid.Text = pid > 0 ? $"PID {pid}" : "";
+
+        string cwd = pane.CurrentWorkingDirectory ?? _activeTab.WorkingDirectory ?? "";
+        StatusCwd.Text = cwd;
+
+        StatusGitBranch.Text = GetGitBranch(cwd);
+
+        if (!string.IsNullOrEmpty(_activeTab.LastExitCode) && _activeTab.LastExitCode != "0")
+        {
+            StatusExitCode.Text = $"exit: {_activeTab.LastExitCode}";
+            StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x3C));
+        }
+        else if (_activeTab.LastExitCode == "0")
+        {
+            StatusExitCode.Text = "exit: 0";
+            StatusExitCode.Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E));
+        }
+        else
+        {
+            StatusExitCode.Text = "";
+        }
+
+        StatusAlive.Text = pane.IsSessionAlive ? "\u25CF running" : "\u25CB exited";
+        StatusAlive.Foreground = pane.IsSessionAlive
+            ? new SolidColorBrush(Color.FromRgb(0x22, 0xc5, 0x5e))
+            : new SolidColorBrush(Color.FromRgb(0x6b, 0x72, 0x80));
+    }
+
+    private static string GetGitBranch(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) return "";
+        try
+        {
+            var dir = new DirectoryInfo(directory);
+            while (dir is not null)
+            {
+                string headPath = Path.Combine(dir.FullName, ".git", "HEAD");
+                if (File.Exists(headPath))
+                {
+                    string head = File.ReadAllText(headPath).Trim();
+                    const string prefix = "ref: refs/heads/";
+                    if (head.StartsWith(prefix))
+                        return "\uE8CB " + head[prefix.Length..];
+                    if (head.Length >= 8)
+                        return "\uE8CB " + head[..8];
+                    return "";
+                }
+                dir = dir.Parent;
+            }
+        }
+        catch { }
+        return "";
+    }
+
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
@@ -1111,6 +1812,14 @@ internal sealed class TerminalTabState
     public bool Started { get; set; }
     public bool Renamed { get; set; }
     public string HighlightColor { get; set; } = "";
+    public bool Pinned { get; set; }
+    public bool HasActivity { get; set; }
+    public bool BroadcastInput { get; set; }
+    public bool ReadOnly { get; set; }
+    public string? LastExitCode { get; set; }
+    public string? GroupName { get; set; }
+    public TerminalLogger Logger { get; } = new();
+    public AsciicastRecorder Recorder { get; } = new();
     public List<TerminalControl> ExtraPanes { get; } = new();
     public List<GridSplitter> Splitters { get; } = new();
     public int PaneCount => 1 + ExtraPanes.Count;

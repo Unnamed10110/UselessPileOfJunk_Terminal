@@ -1,0 +1,74 @@
+<Window
+    x:Class="UselessTerminal.Controls.CommandPaletteDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Command Palette"
+    Width="480" SizeToContent="Height"
+    MaxHeight="460"
+    WindowStartupLocation="CenterOwner"
+    WindowStyle="None"
+    AllowsTransparency="True"
+    Background="Transparent"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    Topmost="True">
+
+    <Border Background="#1a1a1a" BorderBrush="#444" BorderThickness="1" CornerRadius="8"
+            Margin="12" Padding="0">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.5" Color="Black" />
+        </Border.Effect>
+        <StackPanel>
+            <TextBox x:Name="SearchBox"
+                     Background="#222" Foreground="#eee" CaretBrush="#eee"
+                     BorderThickness="0" Padding="14,12" FontSize="15"
+                     TextChanged="SearchBox_TextChanged"
+                     PreviewKeyDown="SearchBox_PreviewKeyDown" />
+            <Border Height="1" Background="#333" />
+            <ListBox x:Name="ResultsList"
+                     Background="Transparent" Foreground="#ddd"
+                     BorderThickness="0" MaxHeight="340"
+                     SelectionChanged="ResultsList_SelectionChanged"
+                     MouseDoubleClick="ResultsList_MouseDoubleClick"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="14,8" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Foreground" Value="#ddd" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                            Background="{TemplateBinding Background}">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding Shortcut}"
+                                                       Foreground="#666" FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Margin="12,0,0,0" />
+                                            <TextBlock Text="{Binding Label}"
+                                                       Foreground="{TemplateBinding Foreground}"
+                                                       FontSize="13"
+                                                       VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#333" />
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#2a2a2a" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </StackPanel>
+    </Border>
+
+</Window>

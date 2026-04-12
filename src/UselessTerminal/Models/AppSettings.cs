@@ -45,6 +45,9 @@ public sealed class AppSettings
     /// <summary>Opacity of the background image layer (0–1).</summary>
     public double ShellBackgroundImageOpacity { get; set; } = 0.52;
 
+    /// <summary>Window backdrop: "None", "Mica", "Acrylic". Only effective on Win 11+.</summary>
+    public string WindowBackdrop { get; set; } = "None";
+
     /// <summary>
     /// Builds the xterm theme payload: semantic colors are expanded into the 16 ANSI slots so shells
     /// and prompts that use standard colors map predictably (errors → red, warnings → yellow, etc.).
