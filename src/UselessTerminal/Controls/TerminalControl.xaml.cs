@@ -176,13 +176,170 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
     public Dictionary<string, string>? ExtraEnvironment { get; set; }
 
+    private string? _shellCommand;
+
     public void StartSession(string command, string? workingDirectory = null, short cols = 120, short rows = 30)
     {
         _session?.Dispose();
+
+        // For PowerShell we inject our shell-integration script via -EncodedCommand at
+        // launch time. This is far more reliable than writing to stdin afterwards: it
+        // can't race with PSReadLine, the user's profile, or oh-my-posh.
+        string launchCommand = MaybeInjectPowerShellArgs(command);
+
         _session = new ConPtySession();
         _session.OutputReceived += OnOutputReceived;
         _session.ProcessExited += OnProcessExited;
-        _session.Start(command, workingDirectory, cols, rows, ExtraEnvironment);
+        _session.Start(launchCommand, workingDirectory, cols, rows, ExtraEnvironment);
+        _shellCommand = command;
+        CurrentWorkingDirectory = workingDirectory;
+        InjectShellIntegrationAsync();
+    }
+
+    /// <summary>
+    /// Most shells don't emit OSC 7 (cwd) by default. For cmd and bash we send a one-line
+    /// init through stdin. PowerShell is handled at launch time via
+    /// <see cref="MaybeInjectPowerShellArgs"/> which appends -NoExit -EncodedCommand
+    /// — far more reliable than racing PSReadLine over stdin.
+    /// </summary>
+    private void InjectShellIntegrationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_shellCommand)) return;
+        string lower = _shellCommand.ToLowerInvariant();
+
+        // PowerShell init is baked into the launch command, nothing to do via stdin.
+        if (lower.Contains("pwsh") || lower.Contains("powershell")) return;
+
+        string? init = null;
+
+        if (lower.EndsWith("cmd.exe") || lower.EndsWith("cmd.exe\"") || lower.EndsWith("\\cmd") || lower == "cmd" || lower.Contains("\\cmd.exe"))
+        {
+            // Use cmd's $e for ESC; emit OSC 7 then the standard prompt; clear screen.
+            init = "prompt $e]7;file:///$P$e\\$P$G & cls\r\n";
+        }
+        else if (lower.Contains("bash") || lower.Contains("\\sh.exe") || lower.EndsWith("/sh") || lower.EndsWith("/zsh") || lower.Contains("zsh"))
+        {
+            // Convert backslashes to forward slashes for file:// URL.
+            init = "PROMPT_COMMAND='printf \"\\033]7;file://%s\\007\" \"${PWD//\\\\//}\"'\nclear\n";
+        }
+
+        if (init is null) return;
+
+        Task.Delay(700).ContinueWith(_ =>
+        {
+            try
+            {
+                if (!_disposed && _session is not null)
+                    _session.WriteInput(init);
+            }
+            catch { }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// If the launch command is a bare PowerShell (pwsh / powershell, no -File / -Command /
+    /// -EncodedCommand args), append <c>-NoExit -EncodedCommand &lt;base64&gt;</c> so our
+    /// shell-integration script runs synchronously at startup right after the user's
+    /// profile loads. This is much more reliable than writing to stdin: there's no race
+    /// with PSReadLine, no echo-back of injected text, and oh-my-posh / starship can't
+    /// clobber the prompt because we wrap it AFTER they install theirs.
+    /// </summary>
+    private static string MaybeInjectPowerShellArgs(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return command;
+        string trimmed = command.Trim();
+
+        string exe;
+        string args;
+        if (trimmed.StartsWith('"'))
+        {
+            int end = trimmed.IndexOf('"', 1);
+            if (end <= 0) return command;
+            exe = trimmed[1..end];
+            args = trimmed[(end + 1)..].Trim();
+        }
+        else
+        {
+            int sp = trimmed.IndexOf(' ');
+            if (sp < 0) { exe = trimmed; args = ""; }
+            else { exe = trimmed[..sp]; args = trimmed[(sp + 1)..].Trim(); }
+        }
+
+        string exeLower = exe.ToLowerInvariant();
+        bool isPwsh =
+            exeLower.EndsWith("pwsh.exe") ||
+            exeLower.EndsWith("powershell.exe") ||
+            exeLower.EndsWith("\\pwsh") ||
+            exeLower.EndsWith("\\powershell") ||
+            exeLower == "pwsh" ||
+            exeLower == "powershell";
+        if (!isPwsh) return command;
+
+        // Don't override the user's explicit script / command flags.
+        string argsLower = args.ToLowerInvariant();
+        if (argsLower.Contains("-file") ||
+            argsLower.Contains("-command") ||
+            argsLower.Contains("-encodedcommand") ||
+            argsLower.Contains(" -c ") ||
+            argsLower.StartsWith("-c "))
+        {
+            return command;
+        }
+
+        // PowerShell expects -EncodedCommand to be UTF-16LE base64.
+        string b64 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(BuildPowerShellInitScript()));
+
+        string injected = string.IsNullOrEmpty(args)
+            ? $"-NoExit -EncodedCommand {b64}"
+            : $"{args} -NoExit -EncodedCommand {b64}";
+
+        return $"\"{exe}\" {injected}";
+    }
+
+    private static string BuildPowerShellInitScript()
+    {
+        // Compatible with both Windows PowerShell 5.1 and PowerShell 7+ (uses [char]27/7
+        // instead of `e). The OSC 7 escape is *prepended to the prompt return value* so
+        // the host writes one combined string — no race with [Console]::Write timing,
+        // no reliance on Write-Host. We also re-detect on every prompt so a profile
+        // that re-assigns $function:prompt later is wrapped automatically next time.
+        return @"
+$ErrorActionPreference = 'SilentlyContinue'
+$global:__utE = [string][char]27
+$global:__utB = [string][char]7
+
+function global:__utWrap {
+    $cur = (Get-Item Function:prompt -ErrorAction SilentlyContinue).ScriptBlock
+    if ($cur -and $cur.ToString() -match '__utEmitCwdMarker') { return }
+    if ($cur) { $global:__utOrigPrompt = $cur }
+    function global:prompt {
+        # __utEmitCwdMarker
+        $p = $PWD.Path -replace '\\','/'
+        $osc = $global:__utE + ']7;file:///' + $p + $global:__utB
+        $orig = ''
+        if ($global:__utOrigPrompt) {
+            try { $orig = & $global:__utOrigPrompt } catch { $orig = 'PS ' + $PWD.Path + '> ' }
+        } else {
+            $orig = 'PS ' + $PWD.Path + '> '
+        }
+        $osc + ([string]$orig)
+    }
+}
+
+__utWrap
+
+# Backup: re-apply the wrap on every idle in case a user profile or module reassigns
+# $function:prompt after we ran (oh-my-posh / starship / Import-Module posh-git etc.).
+if (-not $global:__utOnIdleRegistered) {
+    try {
+        $null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action { __utWrap }
+        $global:__utOnIdleRegistered = $true
+    } catch {}
+}
+
+# Emit the initial cwd so the status bar populates without waiting for a prompt fire.
+[Console]::Write($global:__utE + ']7;file:///' + ($PWD.Path -replace '\\','/') + $global:__utB)
+";
     }
 
     private void OnOutputReceived(byte[] data)

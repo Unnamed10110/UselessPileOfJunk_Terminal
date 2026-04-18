@@ -235,14 +235,24 @@
     term.open(document.getElementById('terminal'));
 
     let webglLoaded = false;
+    let webglAddon = null;
     try {
-        const webglAddon = new WebglAddon.WebglAddon();
-        webglAddon.onContextLoss(() => { webglAddon.dispose(); });
+        webglAddon = new WebglAddon.WebglAddon();
+        webglAddon.onContextLoss(() => { webglAddon.dispose(); webglAddon = null; });
         term.loadAddon(webglAddon);
         webglLoaded = true;
     } catch (e) {
         console.warn('WebGL addon failed, using canvas renderer:', e);
     }
+
+    // The WebGL renderer caches glyphs in a texture atlas. After "clear" (or after
+    // a heavy redraw), stale glyphs can remain visible underneath new output, giving
+    // the appearance of overlapping text. Clearing the atlas + a refresh fixes it.
+    function forceFullRedraw() {
+        try { if (webglAddon && typeof webglAddon.clearTextureAtlas === 'function') webglAddon.clearTextureAtlas(); } catch (e) {}
+        try { term.refresh(0, term.rows - 1); } catch (e) {}
+    }
+    window.termForceRedraw = forceFullRedraw;
 
     fitAddon.fit();
 
@@ -274,16 +284,37 @@
         window.chrome.webview.postMessage(JSON.stringify({ type: 'bell' }));
     });
 
+    // CSI J = "Erase in Display" (cls / clear / Ctrl+L). Returning false lets xterm
+    // process the sequence normally; the queued forceFullRedraw clears the WebGL
+    // texture atlas so glyphs from the previous frame don't overlap new output.
+    let _redrawScheduled = false;
+    function scheduleRedraw() {
+        if (_redrawScheduled) return;
+        _redrawScheduled = true;
+        setTimeout(() => { _redrawScheduled = false; forceFullRedraw(); }, 16);
+    }
+    try {
+        term.parser.registerCsiHandler({final: 'J'}, function() { scheduleRedraw(); return false; });
+    } catch (e) { /* ignore on older xterm */ }
+
     // --- OSC 7: CWD tracking (file://host/path) ---
+    // Tolerate backslashes (cmd.exe), forward slashes (PowerShell/bash), and an
+    // optional host segment ("file://localhost/..."). Always normalise Windows paths
+    // to backslashes so the host can compare them against directory entries.
     term.parser.registerOscHandler(7, function(data) {
         try {
             let cwd = data;
             if (cwd.startsWith('file://')) {
-                const url = new URL(cwd);
-                cwd = decodeURIComponent(url.pathname);
-                if (/^\/[A-Za-z]:/.test(cwd)) cwd = cwd.substring(1);
+                cwd = cwd.substring(7);
+                if (!cwd.startsWith('/') && !cwd.startsWith('\\')) {
+                    const slash = cwd.search(/[\/\\]/);
+                    cwd = slash > 0 ? cwd.substring(slash) : '';
+                }
+                try { cwd = decodeURIComponent(cwd); } catch (e) {}
+                if (/^[\/\\][A-Za-z]:/.test(cwd)) cwd = cwd.substring(1);
             }
-            window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd }));
+            if (/^[A-Za-z]:/.test(cwd)) cwd = cwd.replace(/\//g, '\\');
+            if (cwd) window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd }));
         } catch (e) { }
         return true;
     });
@@ -324,6 +355,7 @@
 
     window.termClear = function() {
         term.clear();
+        forceFullRedraw();
     };
 
     window.termSetTheme = function(themeJson) {
@@ -555,6 +587,7 @@
                 break;
             case 'clear':
                 term.clear();
+                forceFullRedraw();
                 break;
             case 'search':
                 if (!searchVisible) toggleSearch();
