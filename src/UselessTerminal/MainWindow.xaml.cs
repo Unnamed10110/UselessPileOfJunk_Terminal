@@ -50,6 +50,12 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private double _lastGoodWidth = double.NaN;
     private double _lastGoodHeight = double.NaN;
 
+    // Set true at the end of Loaded. Until then we must NOT persist state, because the
+    // window may have been instantiated solely to be torn down again (e.g. App.OnStartup
+    // calls Shutdown() to hand off to an elevated child — WPF still constructs the
+    // StartupUri window first, and its OnClosing would otherwise wipe the saved tabs).
+    private bool _stateRestoreCompleted;
+
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
     [DllImport("user32.dll")] private static extern bool FlashWindow(nint hWnd, bool invert);
@@ -123,6 +129,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         Loaded += (_, _) =>
         {
             RestoreWindowState();
+            CaptureWindowBounds();
+            _stateRestoreCompleted = true;
             PopulateShellMenu();
             RegisterQuakeHotkey();
             ApplyWindowBackdrop(SettingsStore.Instance.Current.WindowBackdrop);
@@ -1562,7 +1570,14 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             foreach (var ts in state.Tabs)
             {
                 string? clr = string.IsNullOrEmpty(ts.HighlightColor) ? null : ts.HighlightColor;
-                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
+                try
+                {
+                    AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
+                }
+                catch
+                {
+                    // A bad command saved from a previous version shouldn't drop the rest.
+                }
             }
             if (state.ActiveTabIndex >= 0 && state.ActiveTabIndex < _tabs.Count)
                 TabStrip.SelectedItem = _tabs[state.ActiveTabIndex].TabItem;
@@ -1578,12 +1593,22 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (WindowState != System.Windows.WindowState.Normal) return;
         if (!double.IsNaN(Left) && !double.IsInfinity(Left)) _lastGoodLeft = Left;
         if (!double.IsNaN(Top) && !double.IsInfinity(Top)) _lastGoodTop = Top;
-        if (ActualWidth > 0 && !double.IsNaN(ActualWidth)) _lastGoodWidth = ActualWidth;
-        if (ActualHeight > 0 && !double.IsNaN(ActualHeight)) _lastGoodHeight = ActualHeight;
+        // Prefer ActualWidth/Height (post-layout) but fall back to the requested
+        // Width/Height during early lifetime when ActualWidth may still be 0.
+        double w = ActualWidth > 0 ? ActualWidth : Width;
+        double h = ActualHeight > 0 ? ActualHeight : Height;
+        if (w > 0 && !double.IsNaN(w)) _lastGoodWidth = w;
+        if (h > 0 && !double.IsNaN(h)) _lastGoodHeight = h;
     }
 
     private void SaveWindowState()
     {
+        // Refuse to persist before the window has finished its initial restore. This
+        // protects against the elevation hand-off where App.OnStartup calls Shutdown()
+        // — WPF still constructs StartupUri (this window) and triggers OnClosing on it
+        // with no tabs, which would otherwise wipe the on-disk session.
+        if (!_stateRestoreCompleted) return;
+
         // RestoreBounds is Rect.Empty (NaN) when window is in Normal state, which makes
         // System.Text.Json throw on serialize and the file silently never updates.
         // Prefer the cached bounds we captured during the last LocationChanged/SizeChanged.
@@ -1680,7 +1705,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         {
             // The X button only hides to tray. Persist tabs/window state now so the
             // next launch can restore even if the process is killed while hidden.
-            try { SaveWindowState(); } catch { }
+            // Skip if we never finished Loaded (e.g. unelevated process shutting down
+            // to hand off to elevated child) — that would wipe the saved tabs with an
+            // empty list.
+            if (_stateRestoreCompleted) { try { SaveWindowState(); } catch { } }
             e.Cancel = true;
             Hide();
             return;
@@ -1710,6 +1738,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         UnregisterQuakeHotkey();
         SaveWindowState();
+
+        // Block any auto-save tick already queued on the dispatcher from running after we
+        // clear _tabs — it would persist an empty session and break restore on next launch.
+        _stateRestoreCompleted = false;
 
         foreach (var tab in _tabs)
         {
