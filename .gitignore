@@ -6,3 +6,5 @@ obj/
 *.cache
 packages/
 node_modules/
+# Added by code-review-graph
+.code-review-graph/

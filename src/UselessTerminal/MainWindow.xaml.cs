@@ -42,6 +42,14 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private System.Windows.Forms.NotifyIcon? _trayIcon;
     private bool _reallyClosing;
 
+    // Cached last-known-good window bounds. Reading Left/Top/ActualWidth/ActualHeight
+    // on a hidden/minimised window can yield NaN or 0; those would overwrite a perfectly
+    // good saved state, breaking session restore.
+    private double _lastGoodLeft = double.NaN;
+    private double _lastGoodTop = double.NaN;
+    private double _lastGoodWidth = double.NaN;
+    private double _lastGoodHeight = double.NaN;
+
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
     [DllImport("user32.dll")] private static extern bool FlashWindow(nint hWnd, bool invert);
@@ -126,8 +134,21 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             };
             statusTimer.Tick += (_, _) => RefreshStatusBar();
             statusTimer.Start();
+
+            // Periodic snapshot of window/tab state so a force-kill or crash still leaves
+            // a usable session to restore. SaveWindowState swallows its own errors.
+            var autoSaveTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(15)
+            };
+            autoSaveTimer.Tick += (_, _) => { try { SaveWindowState(); } catch { } };
+            autoSaveTimer.Start();
         };
+
+        SystemEvents_SessionEndingHook();
         StateChanged += MainWindow_StateChanged;
+        LocationChanged += (_, _) => CaptureWindowBounds();
+        SizeChanged += (_, _) => CaptureWindowBounds();
         Activated += (_, _) =>
         {
             _commandNotifier.WindowIsActive = true;
@@ -137,6 +158,16 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         _commandNotifier.CommandFinished += ShowCommandNotification;
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+    }
+
+    private void SystemEvents_SessionEndingHook()
+    {
+        try
+        {
+            // Save state when Windows is shutting down / signing the user out.
+            SystemEvents.SessionEnding += (_, _) => { try { SaveWindowState(); } catch { } };
+        }
+        catch { }
     }
 
     private void RegisterQuakeHotkey()
@@ -553,6 +584,15 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         double h = first.ActualHeight;
         if (h <= 0) h = 32;
         return posInTabStrip.Y <= h + 12;
+    }
+
+    private void TabStrip_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        // Translate vertical wheel into horizontal scroll for the tab strip.
+        var sv = FindNamedChild<ScrollViewer>(TabStrip, "TabScrollViewer");
+        if (sv is null) return;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
 
     private void TabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1533,15 +1573,37 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         }
     }
 
+    private void CaptureWindowBounds()
+    {
+        if (WindowState != System.Windows.WindowState.Normal) return;
+        if (!double.IsNaN(Left) && !double.IsInfinity(Left)) _lastGoodLeft = Left;
+        if (!double.IsNaN(Top) && !double.IsInfinity(Top)) _lastGoodTop = Top;
+        if (ActualWidth > 0 && !double.IsNaN(ActualWidth)) _lastGoodWidth = ActualWidth;
+        if (ActualHeight > 0 && !double.IsNaN(ActualHeight)) _lastGoodHeight = ActualHeight;
+    }
+
     private void SaveWindowState()
     {
+        // RestoreBounds is Rect.Empty (NaN) when window is in Normal state, which makes
+        // System.Text.Json throw on serialize and the file silently never updates.
+        // Prefer the cached bounds we captured during the last LocationChanged/SizeChanged.
+        bool isMaximized = WindowState == System.Windows.WindowState.Maximized;
+        Rect bounds = isMaximized
+            ? RestoreBounds
+            : new Rect(_lastGoodLeft, _lastGoodTop, _lastGoodWidth, _lastGoodHeight);
+
+        double left = double.IsNaN(bounds.Left) || double.IsInfinity(bounds.Left) ? 100 : bounds.Left;
+        double top = double.IsNaN(bounds.Top) || double.IsInfinity(bounds.Top) ? 100 : bounds.Top;
+        double width = double.IsNaN(bounds.Width) || double.IsInfinity(bounds.Width) || bounds.Width <= 0 ? 1200 : bounds.Width;
+        double height = double.IsNaN(bounds.Height) || double.IsInfinity(bounds.Height) || bounds.Height <= 0 ? 800 : bounds.Height;
+
         var state = new Models.WindowState
         {
-            Left = RestoreBounds.Left,
-            Top = RestoreBounds.Top,
-            Width = RestoreBounds.Width,
-            Height = RestoreBounds.Height,
-            IsMaximized = WindowState == System.Windows.WindowState.Maximized,
+            Left = left,
+            Top = top,
+            Width = width,
+            Height = height,
+            IsMaximized = isMaximized,
             SessionPanelOpen = _sessionPanelOpen,
             SessionPanelWidth = _sessionPanelWidth,
             ActiveTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : 0
@@ -1553,7 +1615,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             {
                 Title = tab.Title,
                 Command = tab.Command,
-                WorkingDirectory = tab.WorkingDirectory,
+                WorkingDirectory = tab.Control.CurrentWorkingDirectory ?? tab.WorkingDirectory,
                 StartingCommand = tab.StartingCommand,
                 HighlightColor = tab.HighlightColor,
                 Renamed = tab.Renamed
@@ -1578,7 +1640,32 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         RefreshAllTabChrome();
         if (TabStrip.SelectedItem is TabItem tabItem && tabItem.Tag is TerminalTabState tab)
+        {
             ActivateTab(tab);
+            EnsureTabVisible(tabItem);
+        }
+    }
+
+    private void EnsureTabVisible(TabItem tabItem)
+    {
+        var sv = FindNamedChild<ScrollViewer>(TabStrip, "TabScrollViewer");
+        if (sv is null) return;
+        // Defer until layout finalises so ActualWidth/positions are valid for new tabs.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                if (tabItem.ActualWidth <= 0) tabItem.UpdateLayout();
+                Point topLeft = tabItem.TranslatePoint(new Point(0, 0), sv);
+                double left = topLeft.X + sv.HorizontalOffset;
+                double right = left + tabItem.ActualWidth;
+                if (left < sv.HorizontalOffset)
+                    sv.ScrollToHorizontalOffset(Math.Max(0, left - 8));
+                else if (right > sv.HorizontalOffset + sv.ViewportWidth)
+                    sv.ScrollToHorizontalOffset(Math.Max(0, right - sv.ViewportWidth + 8));
+            }
+            catch { }
+        }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void TabCloseButton_Click(object sender, RoutedEventArgs e)
@@ -1591,6 +1678,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         if (!_reallyClosing)
         {
+            // The X button only hides to tray. Persist tabs/window state now so the
+            // next launch can restore even if the process is killed while hidden.
+            try { SaveWindowState(); } catch { }
             e.Cancel = true;
             Hide();
             return;
