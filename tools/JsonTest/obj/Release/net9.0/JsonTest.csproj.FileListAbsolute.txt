@@ -1,0 +1,15 @@
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\bin\Release\net9.0\JsonTest.exe
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\bin\Release\net9.0\JsonTest.deps.json
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\bin\Release\net9.0\JsonTest.runtimeconfig.json
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\bin\Release\net9.0\JsonTest.dll
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\bin\Release\net9.0\JsonTest.pdb
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.GeneratedMSBuildEditorConfig.editorconfig
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.AssemblyInfoInputs.cache
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.AssemblyInfo.cs
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.csproj.CoreCompileInputs.cache
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.sourcelink.json
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.dll
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\refint\JsonTest.dll
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.pdb
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\JsonTest.genruntimeconfig.cache
+d:\repos\UselessPileOfJunk_Terminal\tools\JsonTest\obj\Release\net9.0\ref\JsonTest.dll

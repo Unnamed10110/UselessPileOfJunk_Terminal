@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="xterm.min.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
+  #wrap { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  /* Shell background image: GPU layer + high-quality scaling (WebView2 / Chromium) */
+  #termBg {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    image-rendering: auto;
+    -ms-interpolation-mode: bicubic;
+  }
+  #terminal { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar { width: 8px; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+  .xterm-viewport { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .xterm-viewport:hover { scrollbar-color: rgba(255,255,255,0.12) transparent; }
+
+  /* Search bar overlay */
+  #searchBar {
+    display: none;
+    position: absolute; top: 6px; right: 14px; z-index: 100;
+    background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
+    padding: 5px 8px; gap: 5px; align-items: center;
+    font-family: 'Segoe UI', sans-serif; font-size: 13px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #searchBar.visible { display: flex; }
+  #searchBar input {
+    background: #2a2a2a; border: 1px solid #555; border-radius: 4px;
+    color: #eee; padding: 4px 8px; font-size: 13px; width: 220px; outline: none;
+  }
+  #searchBar input:focus { border-color: #ff2b7b; }
+  #searchBar .sb { background: #333; border: 1px solid #555; color: #ccc; border-radius: 4px;
+    padding: 3px 8px; cursor: pointer; font-size: 12px; }
+  #searchBar .sb:hover { background: #444; color: #fff; }
+  #searchBar .count { color: #888; font-size: 11px; min-width: 28px; text-align: center; }
+
+  /* Right-click context menu */
+  #ctxMenu {
+    display: none; position: fixed; z-index: 200;
+    background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
+    padding: 4px 0; min-width: 170px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    font-family: 'Segoe UI', sans-serif; font-size: 13px;
+  }
+  #ctxMenu.visible { display: block; }
+  #ctxMenu .item {
+    padding: 6px 16px; color: #ddd; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #ctxMenu .item:hover { background: #333; }
+  #ctxMenu .item .hint { color: #666; font-size: 11px; margin-left: 20px; }
+  #ctxMenu .sep { height: 1px; background: #333; margin: 4px 0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="termBg"></div>
+  <div id="terminal"></div>
+</div>
+
+<!-- Search bar -->
+<div id="searchBar">
+  <input id="searchInput" type="text" placeholder="Search…" spellcheck="false" />
+  <span class="count" id="searchCount"></span>
+  <button class="sb" id="searchPrev">&#9650;</button>
+  <button class="sb" id="searchNext">&#9660;</button>
+  <button class="sb" id="searchClose">&#10005;</button>
+</div>
+
+<!-- Context menu -->
+<div id="ctxMenu">
+  <div class="item" data-action="copy">Copy<span class="hint">Ctrl+Shift+C</span></div>
+  <div class="item" data-action="paste">Paste<span class="hint">Ctrl+Shift+V</span></div>
+  <div class="sep"></div>
+  <div class="item" data-action="selectAll">Select All</div>
+  <div class="item" data-action="clear">Clear</div>
+  <div class="sep"></div>
+  <div class="item" data-action="search">Search<span class="hint">Ctrl+Shift+F</span></div>
+  <div class="item" data-action="export">Save Output…<span class="hint">Ctrl+Shift+S</span></div>
+</div>
+
+<script src="xterm.min.js"></script>
+<script src="xterm-addon-fit.min.js"></script>
+<script src="xterm-addon-webgl.min.js"></script>
+<script src="xterm-addon-unicode11.min.js"></script>
+<script src="xterm-addon-search.min.js"></script>
+<script src="xterm-addon-web-links.min.js"></script>
+<script src="xterm-addon-image.min.js"></script>
+<script>
+(function() {
+    const term = new Terminal({
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        fontSize: 14,
+        fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff',
+            cursor: '#ffffff',
+            cursorAccent: '#000000',
+            selectionBackground: '#ffffff',
+            selectionForeground: '#000000',
+            black: '#000000',
+            red: '#ff2b7b',
+            green: '#b4fb00',
+            yellow: '#ffef5c',
+            blue: '#6be5ff',
+            magenta: '#c47cff',
+            cyan: '#56ffef',
+            white: '#ffffff',
+            brightBlack: '#888888',
+            brightRed: '#ff2b7b',
+            brightGreen: '#b4fb00',
+            brightYellow: '#ffef5c',
+            brightBlue: '#6be5ff',
+            brightMagenta: '#c47cff',
+            brightCyan: '#56ffef',
+            brightWhite: '#ffffff'
+        },
+        allowProposedApi: true,
+        scrollback: 10000
+    });
+
+    // --- Addons ---
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    const unicode11Addon = new Unicode11Addon.Unicode11Addon();
+    term.loadAddon(unicode11Addon);
+    term.unicode.activeVersion = '11';
+
+    const searchAddon = new SearchAddon.SearchAddon();
+    term.loadAddon(searchAddon);
+
+    try {
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon(function(ev, uri) {
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'openLink', data: uri }));
+        });
+        term.loadAddon(webLinksAddon);
+    } catch (e) { console.warn('Web links addon failed:', e); }
+
+    try {
+        const imageAddon = new ImageAddon.ImageAddon();
+        term.loadAddon(imageAddon);
+    } catch (e) { console.warn('Image addon failed:', e); }
+
+    term.open(document.getElementById('terminal'));
+
+    let webglLoaded = false;
+    try {
+        const webglAddon = new WebglAddon.WebglAddon();
+        webglAddon.onContextLoss(() => { webglAddon.dispose(); });
+        term.loadAddon(webglAddon);
+        webglLoaded = true;
+    } catch (e) {
+        console.warn('WebGL addon failed, using canvas renderer:', e);
+    }
+
+    fitAddon.fit();
+
+    let resizeTimeout;
+    const observer = new ResizeObserver(() => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            fitAddon.fit();
+            sendResize();
+        }, 50);
+    });
+    observer.observe(document.getElementById('terminal'));
+
+    // --- Input: keyboard -> C# ---
+    term.onData((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'input', data: data }));
+    });
+
+    term.onBinary((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'binary', data: data }));
+    });
+
+    term.onTitleChange((title) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'title', data: title }));
+    });
+
+    // --- Bell: notify host to flash tab ---
+    term.onBell(() => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'bell' }));
+    });
+
+    // --- OSC 7: CWD tracking (file://host/path) ---
+    term.parser.registerOscHandler(7, function(data) {
+        try {
+            let cwd = data;
+            if (cwd.startsWith('file://')) {
+                const url = new URL(cwd);
+                cwd = decodeURIComponent(url.pathname);
+                if (/^\/[A-Za-z]:/.test(cwd)) cwd = cwd.substring(1);
+            }
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd }));
+        } catch (e) { }
+        return true;
+    });
+
+    function sendResize() {
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+        }));
+    }
+
+    // --- Output: C# -> terminal ---
+    window.termWrite = function(base64) {
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        term.write(bytes);
+    };
+
+    window.termResize = function(cols, rows) {
+        term.resize(cols, rows);
+    };
+
+    window.termFocus = function() {
+        term.focus();
+    };
+
+    window.termClear = function() {
+        term.clear();
+    };
+
+    window.termSetTheme = function(themeJson) {
+        term.options.theme = JSON.parse(themeJson);
+    };
+
+    window.termSetFontSize = function(size) {
+        term.options.fontSize = size;
+        fitAddon.fit();
+    };
+
+    window.termSetFontFamily = function(family) {
+        term.options.fontFamily = family;
+        fitAddon.fit();
+    };
+
+    window.termSetCursorBlink = function(blink) {
+        term.options.cursorBlink = blink;
+    };
+
+    window.termSetCursorStyle = function(style) {
+        term.options.cursorStyle = style;
+    };
+
+    window.termSetScrollback = function(lines) {
+        term.options.scrollback = lines;
+    };
+
+    window.termApplySettingsRaw = function(jsonStr) {
+        const s = JSON.parse(jsonStr);
+        if (s.fontFamily) term.options.fontFamily = s.fontFamily;
+        if (s.fontSize) term.options.fontSize = s.fontSize;
+        if (s.cursorBlink !== undefined) term.options.cursorBlink = s.cursorBlink;
+        if (s.cursorStyle) term.options.cursorStyle = s.cursorStyle;
+        if (s.scrollback) term.options.scrollback = s.scrollback;
+        if (s.theme) {
+            if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+                const t = Object.assign({}, s.theme);
+                t.background = 'rgba(0,0,0,0.62)';
+                term.options.theme = t;
+            } else {
+                term.options.theme = s.theme;
+            }
+            try {
+                term.refresh(0, term.rows - 1);
+            } catch (e) { /* ignore */ }
+        }
+        const bg = document.getElementById('termBg');
+        if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+            bg.style.backgroundImage = 'url(' + JSON.stringify(s.backgroundImageDataUrl) + ')';
+            let op = s.backgroundImageOpacity;
+            if (typeof op !== 'number' || isNaN(op)) op = 0.52;
+            bg.style.opacity = String(Math.max(0, Math.min(1, op)));
+        } else {
+            bg.style.backgroundImage = 'none';
+            bg.style.opacity = '0';
+        }
+        document.body.style.background = s.theme?.background || '#000000';
+        document.getElementById('terminal').style.background = 'transparent';
+        fitAddon.fit();
+    };
+
+    // --- Ctrl + mouse wheel: zoom terminal font (8–32) ---
+    const minFont = 8;
+    const maxFont = 32;
+    let fontWheelAcc = 0;
+    window.addEventListener('wheel', function(e) {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        fontWheelAcc += e.deltaY;
+        const threshold = 40;
+        if (Math.abs(fontWheelAcc) < threshold) return;
+        const delta = fontWheelAcc < 0 ? 1 : -1;
+        fontWheelAcc = 0;
+        let next = Math.round(term.options.fontSize) + delta;
+        if (next < minFont) next = minFont;
+        if (next > maxFont) next = maxFont;
+        if (next === Math.round(term.options.fontSize)) return;
+        term.options.fontSize = next;
+        fitAddon.fit();
+        sendResize();
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'fontSize', fontSize: next }));
+    }, { passive: false, capture: true });
+
+    // --- Copy / Paste (Ctrl+Shift+C / Ctrl+Shift+V) ---
+    term.attachCustomKeyEventHandler(function(ev) {
+        if (ev.type !== 'keydown') return true;
+        const ctrl = ev.ctrlKey, shift = ev.shiftKey;
+        if (ctrl && shift && ev.code === 'KeyC') {
+            const sel = term.getSelection();
+            if (sel) navigator.clipboard.writeText(sel);
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyV') {
+            navigator.clipboard.readText().then(function(text) {
+                if (text) term.paste(text);
+            });
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyF') {
+            toggleSearch();
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyS') {
+            exportBuffer();
+            return false;
+        }
+        return true;
+    });
+
+    // --- Search bar ---
+    const searchBar = document.getElementById('searchBar');
+    const searchInput = document.getElementById('searchInput');
+    const searchCount = document.getElementById('searchCount');
+    let searchVisible = false;
+
+    function toggleSearch() {
+        searchVisible = !searchVisible;
+        if (searchVisible) {
+            searchBar.classList.add('visible');
+            searchInput.focus();
+            searchInput.select();
+        } else {
+            searchBar.classList.remove('visible');
+            searchAddon.clearDecorations();
+            searchCount.textContent = '';
+            term.focus();
+        }
+    }
+
+    function doSearch(direction) {
+        const query = searchInput.value;
+        if (!query) { searchCount.textContent = ''; return; }
+        let found;
+        if (direction === 'prev') {
+            found = searchAddon.findPrevious(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
+        } else {
+            found = searchAddon.findNext(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
+        }
+        searchCount.textContent = found ? '' : 'No results';
+    }
+
+    searchInput.addEventListener('input', function() { doSearch('next'); });
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doSearch(e.shiftKey ? 'prev' : 'next');
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            toggleSearch();
+        }
+    });
+    document.getElementById('searchNext').addEventListener('click', function() { doSearch('next'); });
+    document.getElementById('searchPrev').addEventListener('click', function() { doSearch('prev'); });
+    document.getElementById('searchClose').addEventListener('click', function() { toggleSearch(); });
+
+    // --- Export buffer ---
+    function exportBuffer() {
+        const buf = term.buffer.active;
+        const lines = [];
+        for (let i = 0; i < buf.length; i++) {
+            const line = buf.getLine(i);
+            if (line) lines.push(line.translateToString(true));
+        }
+        const text = lines.join('\n');
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'exportBuffer', data: text }));
+    }
+    window.termExportBuffer = exportBuffer;
+
+    // --- Right-click context menu ---
+    const ctxMenu = document.getElementById('ctxMenu');
+
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        ctxMenu.style.left = e.clientX + 'px';
+        ctxMenu.style.top = e.clientY + 'px';
+        ctxMenu.classList.add('visible');
+    });
+
+    document.addEventListener('click', function() {
+        ctxMenu.classList.remove('visible');
+    });
+
+    ctxMenu.addEventListener('click', function(e) {
+        const item = e.target.closest('.item');
+        if (!item) return;
+        const action = item.dataset.action;
+        ctxMenu.classList.remove('visible');
+        switch (action) {
+            case 'copy': {
+                const sel = term.getSelection();
+                if (sel) navigator.clipboard.writeText(sel);
+                break;
+            }
+            case 'paste':
+                navigator.clipboard.readText().then(function(text) { if (text) term.paste(text); });
+                break;
+            case 'selectAll':
+                term.selectAll();
+                break;
+            case 'clear':
+                term.clear();
+                break;
+            case 'search':
+                if (!searchVisible) toggleSearch();
+                break;
+            case 'export':
+                exportBuffer();
+                break;
+        }
+        term.focus();
+    });
+
+    // --- Signal ready ---
+    sendResize();
+    term.focus();
+    window.chrome.webview.postMessage(JSON.stringify({ type: 'ready' }));
+})();
+</script>
+</body>
+</html>
