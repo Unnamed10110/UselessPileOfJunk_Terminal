@@ -8,3 +8,8 @@ packages/
 node_modules/
 # Added by code-review-graph
 .code-review-graph/
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+.cursor/
+publish.zip
