@@ -17,6 +17,12 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     private bool _webViewReady;
     private readonly Queue<byte[]> _pendingOutput = new();
     private bool _disposed;
+    private (string Command, string? WorkingDirectory, short Cols, short Rows)? _pendingSessionStart;
+    private short _lastKnownCols = 120;
+    private short _lastKnownRows = 30;
+    private bool _hasReceivedResize;
+    private readonly Queue<string> _webWriteQueue = new();
+    private bool _webWritePumpRunning;
 
     public event Action<string>? TitleChanged;
     public event Action<TerminalControl>? PaneFocused;
@@ -97,6 +103,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                 case "ready":
                     _webViewReady = true;
                     ApplySettings(SettingsStore.Instance.Current);
+                    TryStartPendingSession();
                     FlushPendingOutput();
                     break;
 
@@ -118,7 +125,19 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
                 case "resize":
                     if (msg.cols > 0 && msg.rows > 0)
-                        _session?.Resize((short)msg.cols, (short)msg.rows);
+                    {
+                        _lastKnownCols = (short)msg.cols;
+                        _lastKnownRows = (short)msg.rows;
+                        _hasReceivedResize = true;
+                        if (_session is not null)
+                        {
+                            _session.Resize(_lastKnownCols, _lastKnownRows);
+                        }
+                        else
+                        {
+                            TryStartPendingSession();
+                        }
+                    }
                     break;
 
                 case "title":
@@ -181,7 +200,41 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public void StartSession(string command, string? workingDirectory = null, short cols = 120, short rows = 30)
     {
         _session?.Dispose();
+        _session = null;
 
+        // First-tab race fix:
+        // if ConPTY starts before WebView has reported its real size, the shell paints with
+        // a temporary geometry then gets resized moments later, which can leave garbled rows
+        // in some prompt UIs (PSReadLine list/history, clear). Start only once ready+resized.
+        if (!_webViewReady || !_hasReceivedResize)
+        {
+            _pendingSessionStart = (command, workingDirectory, cols, rows);
+            _shellCommand = command;
+            CurrentWorkingDirectory = workingDirectory;
+            return;
+        }
+
+        StartSessionInternal(command, workingDirectory, ResolveInitialCols(cols), ResolveInitialRows(rows));
+    }
+
+    private void TryStartPendingSession()
+    {
+        if (!_webViewReady || !_hasReceivedResize) return;
+        if (_pendingSessionStart is null) return;
+        var pending = _pendingSessionStart.Value;
+        _pendingSessionStart = null;
+        StartSessionInternal(
+            pending.Command,
+            pending.WorkingDirectory,
+            ResolveInitialCols(pending.Cols),
+            ResolveInitialRows(pending.Rows));
+    }
+
+    private short ResolveInitialCols(short fallback) => _hasReceivedResize && _lastKnownCols > 0 ? _lastKnownCols : fallback;
+    private short ResolveInitialRows(short fallback) => _hasReceivedResize && _lastKnownRows > 0 ? _lastKnownRows : fallback;
+
+    private void StartSessionInternal(string command, string? workingDirectory, short cols, short rows)
+    {
         // For PowerShell we inject our shell-integration script via -EncodedCommand at
         // launch time. This is far more reliable than writing to stdin afterwards: it
         // can't race with PSReadLine, the user's profile, or oh-my-posh.
@@ -369,14 +422,50 @@ if (-not $global:__utOnIdleRegistered) {
     private void WriteToTerminal(byte[] data)
     {
         string base64 = Convert.ToBase64String(data);
+        lock (_webWriteQueue)
+            _webWriteQueue.Enqueue(base64);
+        PumpWebWriteQueue();
+    }
+
+    private void PumpWebWriteQueue()
+    {
         Dispatcher.InvokeAsync(async () =>
         {
+            if (_disposed) return;
+
+            lock (_webWriteQueue)
+            {
+                if (_webWritePumpRunning) return;
+                _webWritePumpRunning = true;
+            }
+
             try
             {
-                if (!_disposed)
-                    await WebView.ExecuteScriptAsync($"window.termWrite('{base64}')");
+                while (!_disposed)
+                {
+                    string? next = null;
+                    lock (_webWriteQueue)
+                    {
+                        if (_webWriteQueue.Count > 0)
+                            next = _webWriteQueue.Dequeue();
+                    }
+
+                    if (next is null) break;
+                    await WebView.ExecuteScriptAsync($"window.termWrite('{next}')");
+                }
             }
             catch { }
+            finally
+            {
+                lock (_webWriteQueue)
+                    _webWritePumpRunning = false;
+
+                lock (_webWriteQueue)
+                {
+                    if (_webWriteQueue.Count > 0 && !_disposed)
+                        PumpWebWriteQueue();
+                }
+            }
         });
     }
 

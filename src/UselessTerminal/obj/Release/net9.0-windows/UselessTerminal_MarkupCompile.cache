@@ -10,11 +10,11 @@ none
 false
 TRACE;RELEASE;NET;NET9_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NET9_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
 d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\App.xaml
-71699772298
+8-1264702827
 14-256612844
-35-1051523509
-214601426372
-Controls\CommandPaletteDialog.xaml;Controls\RenameDialog.xaml;Controls\SessionEditDialog.xaml;Controls\SessionPanel.xaml;Controls\SettingsWindow.xaml;Controls\TerminalControl.xaml;MainWindow.xaml;
+42975022615
+2141564316740
+Controls\BrowserPanel.xaml;Controls\CommandPaletteDialog.xaml;Controls\RenameDialog.xaml;Controls\SessionEditDialog.xaml;Controls\SessionPanel.xaml;Controls\SettingsWindow.xaml;Controls\TerminalControl.xaml;MainWindow.xaml;
 
 False
 
