@@ -40,7 +40,6 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private bool _browserPanelOpen;
     private double _browserPanelWidth = 500;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
-    private bool _reallyClosing;
 
     // Cached last-known-good window bounds. Reading Left/Top/ActualWidth/ActualHeight
     // on a hidden/minimised window can yield NaN or 0; those would overwrite a perfectly
@@ -242,7 +241,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         trayMenu.Items.Add("Settings", null, (_, _) => Dispatcher.Invoke(() => { ShowFromTray(); OpenSettings(); }));
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(() => { _reallyClosing = true; Close(); }));
+        trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(Close));
 
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
@@ -1701,19 +1700,6 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_reallyClosing)
-        {
-            // The X button only hides to tray. Persist tabs/window state now so the
-            // next launch can restore even if the process is killed while hidden.
-            // Skip if we never finished Loaded (e.g. unelevated process shutting down
-            // to hand off to elevated child) — that would wipe the saved tabs with an
-            // empty list.
-            if (_stateRestoreCompleted) { try { SaveWindowState(); } catch { } }
-            e.Cancel = true;
-            Hide();
-            return;
-        }
-
         if (HasRunningProcesses())
         {
             var result = System.Windows.MessageBox.Show(
@@ -1723,7 +1709,6 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 System.Windows.MessageBoxImage.Warning);
             if (result != System.Windows.MessageBoxResult.Yes)
             {
-                _reallyClosing = false;
                 e.Cancel = true;
                 return;
             }

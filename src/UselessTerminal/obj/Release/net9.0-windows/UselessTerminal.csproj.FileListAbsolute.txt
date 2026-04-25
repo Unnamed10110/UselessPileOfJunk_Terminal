@@ -57,3 +57,5 @@ d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windo
 d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\bin\Release\net9.0-windows\Assets\xterm-addon-image.min.js
 d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\bin\Release\net9.0-windows\Assets\xterm-addon-search.min.js
 d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\bin\Release\net9.0-windows\Assets\xterm-addon-web-links.min.js
+d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windows\Controls\BrowserPanel.baml
+d:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windows\Controls\BrowserPanel.g.cs

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UselessTerminal")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2117201cefd813757e06abab8555aed5c7777daf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c2ac45ccd22366de01cf116bc4864b6e8d7537a4")]
 [assembly: System.Reflection.AssemblyProductAttribute("UselessTerminal")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UselessTerminal")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

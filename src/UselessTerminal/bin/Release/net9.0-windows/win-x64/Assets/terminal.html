@@ -156,6 +156,7 @@
         cursorStyle: 'bar',
         fontSize: 14,
         fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
+        allowTransparency: true,
         theme: {
             background: '#000000',
             foreground: '#ffffff',
@@ -234,9 +235,13 @@
 
     term.open(document.getElementById('terminal'));
 
+    // WebGL is faster but its glyph atlas often leaves stale pixels when the shell redraws
+    // in place (PSReadLine history/list, prediction) without alternate-screen switches.
+    // Flip to true only if you want WebGL and accept possible ghost characters.
+    const USE_WEBGL_TERMINAL_RENDERER = false;
     let webglLoaded = false;
     let webglAddon = null;
-    try {
+    if (USE_WEBGL_TERMINAL_RENDERER) try {
         webglAddon = new WebglAddon.WebglAddon();
         webglAddon.onContextLoss(() => { webglAddon.dispose(); webglAddon = null; });
         term.loadAddon(webglAddon);
@@ -245,9 +250,7 @@
         console.warn('WebGL addon failed, using canvas renderer:', e);
     }
 
-    // The WebGL renderer caches glyphs in a texture atlas. After "clear" (or after
-    // a heavy redraw), stale glyphs can remain visible underneath new output, giving
-    // the appearance of overlapping text. Clearing the atlas + a refresh fixes it.
+    // With WebGL: clear atlas + refresh. With canvas: refresh only (cheap no-op for atlas).
     function forceFullRedraw() {
         try { if (webglAddon && typeof webglAddon.clearTextureAtlas === 'function') webglAddon.clearTextureAtlas(); } catch (e) {}
         try { term.refresh(0, term.rows - 1); } catch (e) {}
@@ -293,8 +296,34 @@
         _redrawScheduled = true;
         setTimeout(() => { _redrawScheduled = false; forceFullRedraw(); }, 16);
     }
+
+    // PSReadLine / zsh repaint large regions with EL (CSI K) and many small writes without
+    // alternate-buffer switches. Coalesce redraws ~one frame after PTY output pauses.
+    let _ptyIdleRedrawTimer = null;
+    function scheduleRedrawAfterPtyIdle() {
+        if (_ptyIdleRedrawTimer) clearTimeout(_ptyIdleRedrawTimer);
+        _ptyIdleRedrawTimer = setTimeout(function() {
+            _ptyIdleRedrawTimer = null;
+            forceFullRedraw();
+        }, 40);
+    }
+
     try {
         term.parser.registerCsiHandler({final: 'J'}, function() { scheduleRedraw(); return false; });
+    } catch (e) { /* ignore on older xterm */ }
+    try {
+        term.parser.registerCsiHandler({final: 'K'}, function() { scheduleRedraw(); return false; });
+    } catch (e) { /* ignore on older xterm */ }
+
+    // fzf / vim / etc. use the alternate screen; switching back to the main buffer does not
+    // emit CSI J, so WebGL can keep drawing ghost cells from the TUI over the shell prompt.
+    try {
+        term.buffer.onBufferChange(function() { scheduleRedraw(); });
+    } catch (e) { /* ignore on older xterm */ }
+
+    try {
+        if (typeof term.onWriteParsed === 'function')
+            term.onWriteParsed(function() { scheduleRedrawAfterPtyIdle(); });
     } catch (e) { /* ignore on older xterm */ }
 
     // --- OSC 7: CWD tracking (file://host/path) ---
@@ -326,6 +355,16 @@
             if (!data || data.length === 0) return true;
             var marker = data.charAt(0);
             var rest = data.length > 2 ? data.substring(2) : '';
+            // Prompt redraw often happens right after command-finished (OSC 133;D).
+            // Force a full repaint at that boundary to avoid stale fragments that can
+            // survive PSReadLine list/history redraws on startup and after cls.
+            if (marker === 'D') {
+                scheduleRedrawAfterPtyIdle();
+                setTimeout(function() {
+                    try { term.scrollToBottom(); } catch (e) {}
+                    forceFullRedraw();
+                }, 0);
+            }
             window.chrome.webview.postMessage(JSON.stringify({ type: 'osc133', data: marker + (rest ? ':' + rest : '') }));
         } catch(e) {}
         return true;
@@ -342,7 +381,7 @@
     // --- Output: C# -> terminal ---
     window.termWrite = function(base64) {
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        term.write(bytes);
+        term.write(bytes, function() { scheduleRedrawAfterPtyIdle(); });
     };
 
     window.termResize = function(cols, rows) {
@@ -351,6 +390,7 @@
 
     window.termFocus = function() {
         term.focus();
+        scheduleRedraw();
     };
 
     window.termClear = function() {
