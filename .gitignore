@@ -1,21 +1,24 @@
-bin/
-obj/
-.vs/
-*.user
-*.suo
-*.cache
-packages/
-node_modules/
-
-# Local tooling / assistant config (keep out of the repo)
-.claude/
-.code-review-graph/
-.cursor/
-.cursorrules
-.windsurfrules
-.mcp.json
-.opencode.json
-publish.zip
-AGENTS.md
-CLAUDE.md
-GEMINI.md
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+packages/
+node_modules/
+
+# Local tooling / assistant config (keep out of the repo)
+.claude/
+.code-review-graph/
+.cursor/
+.cursorrules
+.windsurfrules
+.mcp.json
+.opencode.json
+publish.zip
+
+# Build-Installer.ps1 output
+installer/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
