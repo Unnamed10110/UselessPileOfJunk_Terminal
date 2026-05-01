@@ -29,12 +29,13 @@ public sealed class CommandNotifier : IDisposable
         _timer.Tick += OnQuietPeriodElapsed;
     }
 
-    public void OnOutputReceived(string tabTitle)
+    public void OnOutputReceived(string tabTitle, int bursts = 1)
     {
         if (!Enabled || WindowIsActive || _disposed) return;
+        if (bursts < 1) bursts = 1;
 
         _tabTitle = tabTitle;
-        _burstCount++;
+        _burstCount += bursts;
         _armed = _burstCount >= MinOutputBursts;
         _timer.Stop();
         _timer.Start();

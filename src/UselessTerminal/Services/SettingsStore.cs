@@ -32,6 +32,7 @@ public sealed class SettingsStore
                 using var doc = JsonDocument.Parse(json);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new();
                 AppSettingsLegacyMigration.ApplyIfNeeded(doc.RootElement, settings);
+                NormalizeFontWeight(settings);
                 Current = settings;
             }
         }
@@ -68,5 +69,12 @@ public sealed class SettingsStore
         Current.FontSize = fontSize;
         Save();
         SettingsChanged?.Invoke();
+    }
+
+    /// <summary>Older settings.json files omit FontWeight (deserializes as 0).</summary>
+    private static void NormalizeFontWeight(AppSettings s)
+    {
+        if (s.FontWeight < 100 || s.FontWeight > 900)
+            s.FontWeight = 400;
     }
 }

@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Threading;
+using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
 using UselessTerminal.Services;
@@ -13,16 +15,21 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 {
     private const int MaxBackgroundImageBytes = 15 * 1024 * 1024;
 
+    private static readonly JsonSerializerOptions TerminalJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private ConPtySession? _session;
     private bool _webViewReady;
     private readonly Queue<byte[]> _pendingOutput = new();
+    private readonly Queue<string> _webWriteQueue = new();
+    private bool _webWritePumpRunning;
     private bool _disposed;
     private (string Command, string? WorkingDirectory, short Cols, short Rows)? _pendingSessionStart;
     private short _lastKnownCols = 120;
     private short _lastKnownRows = 30;
     private bool _hasReceivedResize;
-    private readonly Queue<string> _webWriteQueue = new();
-    private bool _webWritePumpRunning;
 
     public event Action<string>? TitleChanged;
     public event Action<TerminalControl>? PaneFocused;
@@ -44,13 +51,43 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public TerminalControl()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await InitializeWebView();
+        Loaded += TerminalControl_Loaded;
         GotFocus += (_, _) => PaneFocused?.Invoke(this);
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if (e.NewValue is true)
                 PaneFocused?.Invoke(this);
         };
+    }
+
+    /// <summary>
+    /// WebView2 must not run <see cref="EnsureCoreWebView2Async"/> synchronously inside the first Loaded callback —
+    /// that pattern commonly yields a blank/hung surface on some machines. Wait until application idle.
+    /// </summary>
+    private void TerminalControl_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= TerminalControl_Loaded;
+        Dispatcher.BeginInvoke(new Action(() => _ = InitializeWebViewDeferredAsync()), DispatcherPriority.ApplicationIdle);
+    }
+
+    private async Task InitializeWebViewDeferredAsync()
+    {
+        try
+        {
+            await InitializeWebView();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                System.Windows.MessageBox.Show(
+                    $"Terminal WebView failed to start.\n\n{ex.Message}",
+                    "Useless Terminal",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+            catch { /* ignore */ }
+        }
     }
 
     public void SetFocusIndicator(bool focused)
@@ -72,10 +109,15 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await WebView.EnsureCoreWebView2Async(env);
+        WebView.DefaultBackgroundColor = System.Drawing.Color.Black;
 
         var settings = WebView.CoreWebView2.Settings;
         settings.AreDefaultContextMenusEnabled = false;
+#if DEBUG
         settings.AreDevToolsEnabled = true;
+#else
+        settings.AreDevToolsEnabled = false;
+#endif
         settings.IsStatusBarEnabled = false;
         settings.IsZoomControlEnabled = false;
         settings.IsGeneralAutofillEnabled = false;
@@ -84,10 +126,47 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
         string assetsPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets");
+        if (!Directory.Exists(assetsPath) || !File.Exists(Path.Combine(assetsPath, "terminal.html")))
+        {
+            throw new DirectoryNotFoundException(
+                $"Missing Assets next to the executable (expected terminal.html):\n{assetsPath}");
+        }
+
         WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
             "terminal.local", assetsPath, CoreWebView2HostResourceAccessKind.Allow);
 
+        WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
+
         WebView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
+    }
+
+    private void CoreWebView2_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (!e.IsSuccess || _disposed) return;
+        _ = RefitTerminalMetricsAfterNavigationAsync();
+    }
+
+    private async Task RefitTerminalMetricsAfterNavigationAsync()
+    {
+        await Task.Delay(60);
+        RequestTerminalReflow();
+        await Task.Delay(140);
+        RequestTerminalReflow();
+    }
+
+    /// <summary>Re-runs FitAddon + notifies host — safe before <c>ready</c> (e.g. NavigationCompleted).</summary>
+    public void RequestTerminalReflow()
+    {
+        if (_disposed) return;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                if (_disposed || WebView.CoreWebView2 is null) return;
+                await WebView.ExecuteScriptAsync("try{if(window.termReflowFit)window.termReflowFit();}catch(e){}");
+            }
+            catch { /* torn down */ }
+        }, DispatcherPriority.Background);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -95,7 +174,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         try
         {
             string json = args.TryGetWebMessageAsString();
-            var msg = JsonSerializer.Deserialize<TerminalMessage>(json);
+            var msg = JsonSerializer.Deserialize<TerminalMessage>(json, TerminalJsonOptions);
             if (msg is null) return;
 
             switch (msg.type)
@@ -421,9 +500,9 @@ if (-not $global:__utOnIdleRegistered) {
 
     private void WriteToTerminal(byte[] data)
     {
-        string base64 = Convert.ToBase64String(data);
+        string arg = JsonSerializer.Serialize(Convert.ToBase64String(data));
         lock (_webWriteQueue)
-            _webWriteQueue.Enqueue(base64);
+            _webWriteQueue.Enqueue(arg);
         PumpWebWriteQueue();
     }
 
@@ -451,10 +530,14 @@ if (-not $global:__utOnIdleRegistered) {
                     }
 
                     if (next is null) break;
-                    await WebView.ExecuteScriptAsync($"window.termWrite('{next}')");
+
+                    try
+                    {
+                        await WebView.ExecuteScriptAsync($"window.termWrite({next})");
+                    }
+                    catch { /* WebView disposed */ }
                 }
             }
-            catch { }
             finally
             {
                 lock (_webWriteQueue)
@@ -466,12 +549,16 @@ if (-not $global:__utOnIdleRegistered) {
                         PumpWebWriteQueue();
                 }
             }
-        });
+        }, DispatcherPriority.Normal);
     }
 
     private void OnProcessExited()
     {
-        Dispatcher.InvokeAsync(() => TitleChanged?.Invoke("[Process Exited]"));
+        Dispatcher.InvokeAsync(() =>
+        {
+            PumpWebWriteQueue();
+            TitleChanged?.Invoke("[Process Exited]");
+        });
     }
 
     public void ApplySettings(Models.AppSettings settings)
@@ -498,6 +585,8 @@ if (-not $global:__utOnIdleRegistered) {
         var themeEl = JsonSerializer.Deserialize<JsonElement>(themeJson);
 
         int fontSize = SessionFontSize > 0 ? SessionFontSize : settings.FontSize;
+        int fontWeight = Math.Clamp(settings.FontWeight, 100, 900);
+        int fontWeightBold = Math.Min(900, fontWeight + 250);
 
         JsonElement finalTheme = themeEl;
         if (!string.IsNullOrWhiteSpace(SessionThemeBackground))
@@ -512,6 +601,8 @@ if (-not $global:__utOnIdleRegistered) {
         {
             ["fontFamily"] = settings.FontFamily,
             ["fontSize"] = fontSize,
+            ["fontWeight"] = fontWeight,
+            ["fontWeightBold"] = fontWeightBold,
             ["cursorBlink"] = settings.CursorBlink,
             ["cursorStyle"] = settings.CursorStyle,
             ["scrollback"] = settings.Scrollback,

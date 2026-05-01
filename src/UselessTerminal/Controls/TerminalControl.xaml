@@ -7,7 +7,7 @@
     <Grid Background="#000000">
         <wv2:WebView2
             x:Name="WebView"
-            DefaultBackgroundColor="Transparent" />
+            DefaultBackgroundColor="Black" />
         <Border x:Name="FocusBorder"
                 BorderThickness="1"
                 BorderBrush="Transparent"

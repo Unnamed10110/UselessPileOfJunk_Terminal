@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
 using UselessTerminal.Controls;
@@ -54,6 +55,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     // calls Shutdown() to hand off to an elevated child — WPF still constructs the
     // StartupUri window first, and its OnClosing would otherwise wipe the saved tabs).
     private bool _stateRestoreCompleted;
+
+    private DispatcherTimer? _terminalReflowDebounce;
 
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
@@ -128,6 +131,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         Loaded += (_, _) =>
         {
             RestoreWindowState();
+            ClampWindowIntoVirtualScreen();
             CaptureWindowBounds();
             _stateRestoreCompleted = true;
             PopulateShellMenu();
@@ -150,16 +154,21 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             };
             autoSaveTimer.Tick += (_, _) => { try { SaveWindowState(); } catch { } };
             autoSaveTimer.Start();
+
+            // WebView2 + xterm FitAddon often need a layout pass after the window first appears (pwsh/OMP).
+            Dispatcher.BeginInvoke(new Action(ReflowAllTerminalPanes), DispatcherPriority.ApplicationIdle);
+            Dispatcher.BeginInvoke(new Action(ReflowAllTerminalPanes), DispatcherPriority.ContextIdle);
         };
 
         SystemEvents_SessionEndingHook();
         StateChanged += MainWindow_StateChanged;
         LocationChanged += (_, _) => CaptureWindowBounds();
-        SizeChanged += (_, _) => CaptureWindowBounds();
+        SizeChanged += MainWindow_SizeChangedForReflow;
         Activated += (_, _) =>
         {
             _commandNotifier.WindowIsActive = true;
             _commandNotifier.Reset();
+            ReflowAllTerminalPanes();
         };
         Deactivated += (_, _) => _commandNotifier.WindowIsActive = false;
         _commandNotifier.CommandFinished += ShowCommandNotification;
@@ -264,8 +273,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        // Do not Hide() on minimize — it breaks DWM thumbnails / taskbar previews and can leave a blank surface on restore.
         if (WindowState == System.Windows.WindowState.Minimized)
-            Hide();
+            ShowInTaskbar = true;
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -474,15 +484,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         termControl.BufferExportRequested += text => Dispatcher.Invoke(() => ExportBufferToFile(text));
 
-        termControl.OutputProduced += () => Dispatcher.InvokeAsync(() =>
-        {
-            if (_activeTab != tabState && !tabState.HasActivity)
-            {
-                tabState.HasActivity = true;
-                UpdateTabHeader(tabState);
-            }
-            _commandNotifier.OnOutputReceived(tabState.Title);
-        });
+        termControl.OutputProduced += () => ScheduleTabOutputNotify(tabState);
 
         termControl.CwdChanged += cwd => Dispatcher.Invoke(() =>
         {
@@ -541,6 +543,41 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         foreach (var tab in _tabs)
             UpdateTabHeader(tab);
+    }
+
+    private void ScheduleTabOutputNotify(TerminalTabState tabState)
+    {
+        bool schedule = false;
+        lock (tabState.OutputNotifyLock)
+        {
+            tabState.CoalescedOutputCount++;
+            if (!tabState.OutputNotifyScheduled)
+            {
+                tabState.OutputNotifyScheduled = true;
+                schedule = true;
+            }
+        }
+        if (schedule)
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => ProcessTabOutputNotify(tabState)));
+    }
+
+    private void ProcessTabOutputNotify(TerminalTabState tabState)
+    {
+        int count;
+        lock (tabState.OutputNotifyLock)
+        {
+            count = tabState.CoalescedOutputCount;
+            tabState.CoalescedOutputCount = 0;
+            tabState.OutputNotifyScheduled = false;
+        }
+        if (count == 0) return;
+
+        if (_activeTab != tabState && !tabState.HasActivity)
+        {
+            tabState.HasActivity = true;
+            UpdateTabHeader(tabState);
+        }
+        _commandNotifier.OnOutputReceived(tabState.Title, count);
     }
 
     private void MoveTab(int fromIndex, int toIndexBeforeRemove)
@@ -1558,6 +1595,11 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (state.IsMaximized)
             WindowState = System.Windows.WindowState.Maximized;
 
+        // Ensure we are actually visible (tray/Hide interactions or bad persisted state).
+        if (Visibility != Visibility.Visible)
+            Visibility = Visibility.Visible;
+        Show();
+
         if (state.SessionPanelWidth >= 160 && state.SessionPanelWidth <= 900)
             _sessionPanelWidth = state.SessionPanelWidth;
 
@@ -1584,6 +1626,88 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         else
         {
             AddDefaultTab();
+        }
+    }
+
+    /// <summary>
+    /// Keeps the window on-screen when monitors change or saved geometry points to a disconnected display.
+    /// </summary>
+    private void ClampWindowIntoVirtualScreen()
+    {
+        try
+        {
+            double minW = MinWidth > 0 ? MinWidth : 480;
+            double minH = MinHeight > 0 ? MinHeight : 360;
+            if (Width < minW || double.IsNaN(Width) || double.IsInfinity(Width)) Width = 1200;
+            if (Height < minH || double.IsNaN(Height) || double.IsInfinity(Height)) Height = 800;
+
+            double vsLeft = SystemParameters.VirtualScreenLeft;
+            double vsTop = SystemParameters.VirtualScreenTop;
+            double vsWidth = SystemParameters.VirtualScreenWidth;
+            double vsHeight = SystemParameters.VirtualScreenHeight;
+            double vsRight = vsLeft + vsWidth;
+            double vsBottom = vsTop + vsHeight;
+
+            if (Width > vsWidth) Width = Math.Max(minW, vsWidth - 80);
+            if (Height > vsHeight) Height = Math.Max(minH, vsHeight - 80);
+
+            if (double.IsNaN(Left) || double.IsInfinity(Left)) Left = vsLeft + 48;
+            if (double.IsNaN(Top) || double.IsInfinity(Top)) Top = vsTop + 48;
+
+            // If the saved bounds are completely outside the visible desktop, recenter.
+            var windowRect = new Rect(Left, Top, Width, Height);
+            var virtualRect = new Rect(vsLeft, vsTop, vsWidth, vsHeight);
+            bool offscreen = !windowRect.IntersectsWith(virtualRect);
+            if (offscreen)
+            {
+                Left = vsLeft + Math.Max(0, (vsWidth - Width) / 2);
+                Top = vsTop + Math.Max(0, (vsHeight - Height) / 2);
+                return;
+            }
+
+            // Keep at least part of the titlebar and body visible.
+            const double minVisible = 120;
+            if (Left < vsLeft - (Width - minVisible))
+                Left = vsLeft - (Width - minVisible);
+            else if (Left > vsRight - minVisible)
+                Left = vsRight - minVisible;
+
+            if (Top < vsTop)
+                Top = vsTop;
+            else if (Top > vsBottom - minVisible)
+                Top = vsBottom - minVisible;
+        }
+        catch { /* ignore */ }
+    }
+
+    private void MainWindow_SizeChangedForReflow(object sender, SizeChangedEventArgs e)
+    {
+        CaptureWindowBounds();
+        ScheduleReflowAllTerminalPanesDebounced();
+    }
+
+    private void ScheduleReflowAllTerminalPanesDebounced()
+    {
+        _terminalReflowDebounce ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(120),
+            DispatcherPriority.Background,
+            (_, _) =>
+            {
+                _terminalReflowDebounce!.Stop();
+                ReflowAllTerminalPanes();
+            },
+            Dispatcher);
+
+        _terminalReflowDebounce.Stop();
+        _terminalReflowDebounce.Start();
+    }
+
+    private void ReflowAllTerminalPanes()
+    {
+        foreach (var tab in _tabs)
+        {
+            foreach (var pane in tab.AllPanes)
+                pane.RequestTerminalReflow();
         }
     }
 
@@ -2038,6 +2162,11 @@ internal sealed class TerminalTabState
     public List<GridSplitter> Splitters { get; } = new();
     public int PaneCount => 1 + ExtraPanes.Count;
     public TerminalControl? FocusedPane { get; set; }
+
+    /// <summary>Coalesces high-frequency <see cref="TerminalControl.OutputProduced"/> to reduce UI-thread churn.</summary>
+    public readonly object OutputNotifyLock = new();
+    public int CoalescedOutputCount;
+    public bool OutputNotifyScheduled;
 
     public List<TerminalControl> AllPanes
     {

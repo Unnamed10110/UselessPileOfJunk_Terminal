@@ -43,6 +43,18 @@
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="Weight" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="FontWeightSlider" Width="200" Minimum="300" Maximum="700"
+                                IsSnapToTickEnabled="True" TickFrequency="50"
+                                ValueChanged="FontWeightSlider_ValueChanged"
+                                VerticalAlignment="Center" />
+                        <TextBlock x:Name="FontWeightLabel" Width="44" Foreground="#ffffff"
+                                   VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
                     <TextBlock Text="Cursor Style" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
                     <ComboBox x:Name="CursorStyleBox"
                               Background="#000000" Foreground="#ffffff"
