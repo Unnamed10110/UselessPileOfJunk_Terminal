@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Threading;
+using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
 using UselessTerminal.Services;
@@ -13,10 +15,21 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 {
     private const int MaxBackgroundImageBytes = 15 * 1024 * 1024;
 
+    private static readonly JsonSerializerOptions TerminalJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private ConPtySession? _session;
     private bool _webViewReady;
     private readonly Queue<byte[]> _pendingOutput = new();
+    private readonly Queue<string> _webWriteQueue = new();
+    private bool _webWritePumpRunning;
     private bool _disposed;
+    private (string Command, string? WorkingDirectory, short Cols, short Rows)? _pendingSessionStart;
+    private short _lastKnownCols = 120;
+    private short _lastKnownRows = 30;
+    private bool _hasReceivedResize;
 
     public event Action<string>? TitleChanged;
     public event Action<TerminalControl>? PaneFocused;
@@ -38,13 +51,43 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public TerminalControl()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await InitializeWebView();
+        Loaded += TerminalControl_Loaded;
         GotFocus += (_, _) => PaneFocused?.Invoke(this);
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if (e.NewValue is true)
                 PaneFocused?.Invoke(this);
         };
+    }
+
+    /// <summary>
+    /// WebView2 must not run <see cref="EnsureCoreWebView2Async"/> synchronously inside the first Loaded callback —
+    /// that pattern commonly yields a blank/hung surface on some machines. Wait until application idle.
+    /// </summary>
+    private void TerminalControl_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= TerminalControl_Loaded;
+        Dispatcher.BeginInvoke(new Action(() => _ = InitializeWebViewDeferredAsync()), DispatcherPriority.ApplicationIdle);
+    }
+
+    private async Task InitializeWebViewDeferredAsync()
+    {
+        try
+        {
+            await InitializeWebView();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                System.Windows.MessageBox.Show(
+                    $"Terminal WebView failed to start.\n\n{ex.Message}",
+                    "Useless Terminal",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+            catch { /* ignore */ }
+        }
     }
 
     public void SetFocusIndicator(bool focused)
@@ -66,10 +109,15 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await WebView.EnsureCoreWebView2Async(env);
+        WebView.DefaultBackgroundColor = System.Drawing.Color.Black;
 
         var settings = WebView.CoreWebView2.Settings;
         settings.AreDefaultContextMenusEnabled = false;
+#if DEBUG
         settings.AreDevToolsEnabled = true;
+#else
+        settings.AreDevToolsEnabled = false;
+#endif
         settings.IsStatusBarEnabled = false;
         settings.IsZoomControlEnabled = false;
         settings.IsGeneralAutofillEnabled = false;
@@ -78,10 +126,47 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
         string assetsPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets");
+        if (!Directory.Exists(assetsPath) || !File.Exists(Path.Combine(assetsPath, "terminal.html")))
+        {
+            throw new DirectoryNotFoundException(
+                $"Missing Assets next to the executable (expected terminal.html):\n{assetsPath}");
+        }
+
         WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
             "terminal.local", assetsPath, CoreWebView2HostResourceAccessKind.Allow);
 
+        WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
+
         WebView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
+    }
+
+    private void CoreWebView2_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (!e.IsSuccess || _disposed) return;
+        _ = RefitTerminalMetricsAfterNavigationAsync();
+    }
+
+    private async Task RefitTerminalMetricsAfterNavigationAsync()
+    {
+        await Task.Delay(60);
+        RequestTerminalReflow();
+        await Task.Delay(140);
+        RequestTerminalReflow();
+    }
+
+    /// <summary>Re-runs FitAddon + notifies host — safe before <c>ready</c> (e.g. NavigationCompleted).</summary>
+    public void RequestTerminalReflow()
+    {
+        if (_disposed) return;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                if (_disposed || WebView.CoreWebView2 is null) return;
+                await WebView.ExecuteScriptAsync("try{if(window.termReflowFit)window.termReflowFit();}catch(e){}");
+            }
+            catch { /* torn down */ }
+        }, DispatcherPriority.Background);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -89,7 +174,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         try
         {
             string json = args.TryGetWebMessageAsString();
-            var msg = JsonSerializer.Deserialize<TerminalMessage>(json);
+            var msg = JsonSerializer.Deserialize<TerminalMessage>(json, TerminalJsonOptions);
             if (msg is null) return;
 
             switch (msg.type)
@@ -97,6 +182,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                 case "ready":
                     _webViewReady = true;
                     ApplySettings(SettingsStore.Instance.Current);
+                    TryStartPendingSession();
                     FlushPendingOutput();
                     break;
 
@@ -118,7 +204,19 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
                 case "resize":
                     if (msg.cols > 0 && msg.rows > 0)
-                        _session?.Resize((short)msg.cols, (short)msg.rows);
+                    {
+                        _lastKnownCols = (short)msg.cols;
+                        _lastKnownRows = (short)msg.rows;
+                        _hasReceivedResize = true;
+                        if (_session is not null)
+                        {
+                            _session.Resize(_lastKnownCols, _lastKnownRows);
+                        }
+                        else
+                        {
+                            TryStartPendingSession();
+                        }
+                    }
                     break;
 
                 case "title":
@@ -176,13 +274,204 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
     public Dictionary<string, string>? ExtraEnvironment { get; set; }
 
+    private string? _shellCommand;
+
     public void StartSession(string command, string? workingDirectory = null, short cols = 120, short rows = 30)
     {
         _session?.Dispose();
+        _session = null;
+
+        // First-tab race fix:
+        // if ConPTY starts before WebView has reported its real size, the shell paints with
+        // a temporary geometry then gets resized moments later, which can leave garbled rows
+        // in some prompt UIs (PSReadLine list/history, clear). Start only once ready+resized.
+        if (!_webViewReady || !_hasReceivedResize)
+        {
+            _pendingSessionStart = (command, workingDirectory, cols, rows);
+            _shellCommand = command;
+            CurrentWorkingDirectory = workingDirectory;
+            return;
+        }
+
+        StartSessionInternal(command, workingDirectory, ResolveInitialCols(cols), ResolveInitialRows(rows));
+    }
+
+    private void TryStartPendingSession()
+    {
+        if (!_webViewReady || !_hasReceivedResize) return;
+        if (_pendingSessionStart is null) return;
+        var pending = _pendingSessionStart.Value;
+        _pendingSessionStart = null;
+        StartSessionInternal(
+            pending.Command,
+            pending.WorkingDirectory,
+            ResolveInitialCols(pending.Cols),
+            ResolveInitialRows(pending.Rows));
+    }
+
+    private short ResolveInitialCols(short fallback) => _hasReceivedResize && _lastKnownCols > 0 ? _lastKnownCols : fallback;
+    private short ResolveInitialRows(short fallback) => _hasReceivedResize && _lastKnownRows > 0 ? _lastKnownRows : fallback;
+
+    private void StartSessionInternal(string command, string? workingDirectory, short cols, short rows)
+    {
+        // For PowerShell we inject our shell-integration script via -EncodedCommand at
+        // launch time. This is far more reliable than writing to stdin afterwards: it
+        // can't race with PSReadLine, the user's profile, or oh-my-posh.
+        string launchCommand = MaybeInjectPowerShellArgs(command);
+
         _session = new ConPtySession();
         _session.OutputReceived += OnOutputReceived;
         _session.ProcessExited += OnProcessExited;
-        _session.Start(command, workingDirectory, cols, rows, ExtraEnvironment);
+        _session.Start(launchCommand, workingDirectory, cols, rows, ExtraEnvironment);
+        _shellCommand = command;
+        CurrentWorkingDirectory = workingDirectory;
+        InjectShellIntegrationAsync();
+    }
+
+    /// <summary>
+    /// Most shells don't emit OSC 7 (cwd) by default. For cmd and bash we send a one-line
+    /// init through stdin. PowerShell is handled at launch time via
+    /// <see cref="MaybeInjectPowerShellArgs"/> which appends -NoExit -EncodedCommand
+    /// — far more reliable than racing PSReadLine over stdin.
+    /// </summary>
+    private void InjectShellIntegrationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_shellCommand)) return;
+        string lower = _shellCommand.ToLowerInvariant();
+
+        // PowerShell init is baked into the launch command, nothing to do via stdin.
+        if (lower.Contains("pwsh") || lower.Contains("powershell")) return;
+
+        string? init = null;
+
+        if (lower.EndsWith("cmd.exe") || lower.EndsWith("cmd.exe\"") || lower.EndsWith("\\cmd") || lower == "cmd" || lower.Contains("\\cmd.exe"))
+        {
+            // Use cmd's $e for ESC; emit OSC 7 then the standard prompt; clear screen.
+            init = "prompt $e]7;file:///$P$e\\$P$G & cls\r\n";
+        }
+        else if (lower.Contains("bash") || lower.Contains("\\sh.exe") || lower.EndsWith("/sh") || lower.EndsWith("/zsh") || lower.Contains("zsh"))
+        {
+            // Convert backslashes to forward slashes for file:// URL.
+            init = "PROMPT_COMMAND='printf \"\\033]7;file://%s\\007\" \"${PWD//\\\\//}\"'\nclear\n";
+        }
+
+        if (init is null) return;
+
+        Task.Delay(700).ContinueWith(_ =>
+        {
+            try
+            {
+                if (!_disposed && _session is not null)
+                    _session.WriteInput(init);
+            }
+            catch { }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// If the launch command is a bare PowerShell (pwsh / powershell, no -File / -Command /
+    /// -EncodedCommand args), append <c>-NoExit -EncodedCommand &lt;base64&gt;</c> so our
+    /// shell-integration script runs synchronously at startup right after the user's
+    /// profile loads. This is much more reliable than writing to stdin: there's no race
+    /// with PSReadLine, no echo-back of injected text, and oh-my-posh / starship can't
+    /// clobber the prompt because we wrap it AFTER they install theirs.
+    /// </summary>
+    private static string MaybeInjectPowerShellArgs(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return command;
+        string trimmed = command.Trim();
+
+        string exe;
+        string args;
+        if (trimmed.StartsWith('"'))
+        {
+            int end = trimmed.IndexOf('"', 1);
+            if (end <= 0) return command;
+            exe = trimmed[1..end];
+            args = trimmed[(end + 1)..].Trim();
+        }
+        else
+        {
+            int sp = trimmed.IndexOf(' ');
+            if (sp < 0) { exe = trimmed; args = ""; }
+            else { exe = trimmed[..sp]; args = trimmed[(sp + 1)..].Trim(); }
+        }
+
+        string exeLower = exe.ToLowerInvariant();
+        bool isPwsh =
+            exeLower.EndsWith("pwsh.exe") ||
+            exeLower.EndsWith("powershell.exe") ||
+            exeLower.EndsWith("\\pwsh") ||
+            exeLower.EndsWith("\\powershell") ||
+            exeLower == "pwsh" ||
+            exeLower == "powershell";
+        if (!isPwsh) return command;
+
+        // Don't override the user's explicit script / command flags.
+        string argsLower = args.ToLowerInvariant();
+        if (argsLower.Contains("-file") ||
+            argsLower.Contains("-command") ||
+            argsLower.Contains("-encodedcommand") ||
+            argsLower.Contains(" -c ") ||
+            argsLower.StartsWith("-c "))
+        {
+            return command;
+        }
+
+        // PowerShell expects -EncodedCommand to be UTF-16LE base64.
+        string b64 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(BuildPowerShellInitScript()));
+
+        string injected = string.IsNullOrEmpty(args)
+            ? $"-NoExit -EncodedCommand {b64}"
+            : $"{args} -NoExit -EncodedCommand {b64}";
+
+        return $"\"{exe}\" {injected}";
+    }
+
+    private static string BuildPowerShellInitScript()
+    {
+        // Compatible with both Windows PowerShell 5.1 and PowerShell 7+ (uses [char]27/7
+        // instead of `e). The OSC 7 escape is *prepended to the prompt return value* so
+        // the host writes one combined string — no race with [Console]::Write timing,
+        // no reliance on Write-Host. We also re-detect on every prompt so a profile
+        // that re-assigns $function:prompt later is wrapped automatically next time.
+        return @"
+$ErrorActionPreference = 'SilentlyContinue'
+$global:__utE = [string][char]27
+$global:__utB = [string][char]7
+
+function global:__utWrap {
+    $cur = (Get-Item Function:prompt -ErrorAction SilentlyContinue).ScriptBlock
+    if ($cur -and $cur.ToString() -match '__utEmitCwdMarker') { return }
+    if ($cur) { $global:__utOrigPrompt = $cur }
+    function global:prompt {
+        # __utEmitCwdMarker
+        $p = $PWD.Path -replace '\\','/'
+        $osc = $global:__utE + ']7;file:///' + $p + $global:__utB
+        $orig = ''
+        if ($global:__utOrigPrompt) {
+            try { $orig = & $global:__utOrigPrompt } catch { $orig = 'PS ' + $PWD.Path + '> ' }
+        } else {
+            $orig = 'PS ' + $PWD.Path + '> '
+        }
+        $osc + ([string]$orig)
+    }
+}
+
+__utWrap
+
+# Backup: re-apply the wrap on every idle in case a user profile or module reassigns
+# $function:prompt after we ran (oh-my-posh / starship / Import-Module posh-git etc.).
+if (-not $global:__utOnIdleRegistered) {
+    try {
+        $null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action { __utWrap }
+        $global:__utOnIdleRegistered = $true
+    } catch {}
+}
+
+# Emit the initial cwd so the status bar populates without waiting for a prompt fire.
+[Console]::Write($global:__utE + ']7;file:///' + ($PWD.Path -replace '\\','/') + $global:__utB)
+";
     }
 
     private void OnOutputReceived(byte[] data)
@@ -211,21 +500,65 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
     private void WriteToTerminal(byte[] data)
     {
-        string base64 = Convert.ToBase64String(data);
+        string arg = JsonSerializer.Serialize(Convert.ToBase64String(data));
+        lock (_webWriteQueue)
+            _webWriteQueue.Enqueue(arg);
+        PumpWebWriteQueue();
+    }
+
+    private void PumpWebWriteQueue()
+    {
         Dispatcher.InvokeAsync(async () =>
         {
+            if (_disposed) return;
+
+            lock (_webWriteQueue)
+            {
+                if (_webWritePumpRunning) return;
+                _webWritePumpRunning = true;
+            }
+
             try
             {
-                if (!_disposed)
-                    await WebView.ExecuteScriptAsync($"window.termWrite('{base64}')");
+                while (!_disposed)
+                {
+                    string? next = null;
+                    lock (_webWriteQueue)
+                    {
+                        if (_webWriteQueue.Count > 0)
+                            next = _webWriteQueue.Dequeue();
+                    }
+
+                    if (next is null) break;
+
+                    try
+                    {
+                        await WebView.ExecuteScriptAsync($"window.termWrite({next})");
+                    }
+                    catch { /* WebView disposed */ }
+                }
             }
-            catch { }
-        });
+            finally
+            {
+                lock (_webWriteQueue)
+                    _webWritePumpRunning = false;
+
+                lock (_webWriteQueue)
+                {
+                    if (_webWriteQueue.Count > 0 && !_disposed)
+                        PumpWebWriteQueue();
+                }
+            }
+        }, DispatcherPriority.Normal);
     }
 
     private void OnProcessExited()
     {
-        Dispatcher.InvokeAsync(() => TitleChanged?.Invoke("[Process Exited]"));
+        Dispatcher.InvokeAsync(() =>
+        {
+            PumpWebWriteQueue();
+            TitleChanged?.Invoke("[Process Exited]");
+        });
     }
 
     public void ApplySettings(Models.AppSettings settings)
@@ -252,6 +585,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         var themeEl = JsonSerializer.Deserialize<JsonElement>(themeJson);
 
         int fontSize = SessionFontSize > 0 ? SessionFontSize : settings.FontSize;
+        int fontWeight = Math.Clamp(settings.FontWeight, 100, 900);
+        int fontWeightBold = Math.Min(900, fontWeight + 250);
 
         JsonElement finalTheme = themeEl;
         if (!string.IsNullOrWhiteSpace(SessionThemeBackground))
@@ -266,6 +601,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         {
             ["fontFamily"] = settings.FontFamily,
             ["fontSize"] = fontSize,
+            ["fontWeight"] = fontWeight,
+            ["fontWeightBold"] = fontWeightBold,
             ["cursorBlink"] = settings.CursorBlink,
             ["cursorStyle"] = settings.CursorStyle,
             ["scrollback"] = settings.Scrollback,

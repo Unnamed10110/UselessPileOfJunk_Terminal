@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="xterm.min.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
+  #wrap { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  /* Shell background image: GPU layer + high-quality scaling (WebView2 / Chromium) */
+  #termBg {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    image-rendering: auto;
+    -ms-interpolation-mode: bicubic;
+  }
+  #terminal { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar { width: 8px; background: transparent; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+  .xterm-viewport { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .xterm-viewport:hover { scrollbar-color: rgba(255,255,255,0.12) transparent; }
+
+  /* Search bar overlay */
+  #searchBar {
+    display: none;
+    position: absolute; top: 6px; right: 14px; z-index: 100;
+    background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
+    padding: 5px 8px; gap: 5px; align-items: center;
+    font-family: 'Segoe UI', sans-serif; font-size: 13px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #searchBar.visible { display: flex; }
+  #searchBar input {
+    background: #2a2a2a; border: 1px solid #555; border-radius: 4px;
+    color: #eee; padding: 4px 8px; font-size: 13px; width: 220px; outline: none;
+  }
+  #searchBar input:focus { border-color: #ff2b7b; }
+  #searchBar .sb { background: #333; border: 1px solid #555; color: #ccc; border-radius: 4px;
+    padding: 3px 8px; cursor: pointer; font-size: 12px; }
+  #searchBar .sb:hover { background: #444; color: #fff; }
+  #searchBar .count { color: #888; font-size: 11px; min-width: 28px; text-align: center; }
+  #searchBar label.cb {
+    display: flex; align-items: center; gap: 3px;
+    color: #999; font-size: 11px; cursor: pointer; user-select: none; margin-left: 4px;
+  }
+  #searchBar label.cb input { accent-color: #ff2b7b; width: 13px; height: 13px; cursor: pointer; }
+
+  /* Right-click context menu */
+  #ctxMenu {
+    display: none; position: fixed; z-index: 200;
+    background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
+    padding: 4px 0; min-width: 170px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    font-family: 'Segoe UI', sans-serif; font-size: 13px;
+  }
+  #ctxMenu.visible { display: block; }
+  #ctxMenu .item {
+    padding: 6px 16px; color: #ddd; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #ctxMenu .item:hover { background: #333; }
+  #ctxMenu .item .hint { color: #666; font-size: 11px; margin-left: 20px; }
+  #ctxMenu .sep { height: 1px; background: #333; margin: 4px 0; }
+
+  /* Minimap scrollbar */
+  #minimap {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 48px; z-index: 50;
+    pointer-events: auto; cursor: pointer; display: none;
+    background: rgba(0,0,0,0.3);
+  }
+  #minimap.visible { display: block; }
+  #minimap canvas { width: 100%; height: 100%; }
+
+  /* Retro CRT effect */
+  #wrap.crt {
+    animation: crtFlicker 0.15s infinite alternate;
+  }
+  #wrap.crt::before {
+    content: '';
+    position: absolute; inset: 0; z-index: 999;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.15) 0px,
+      rgba(0,0,0,0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+  #wrap.crt::after {
+    content: '';
+    position: absolute; inset: 0; z-index: 998;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.45) 100%);
+    border-radius: 12px;
+  }
+  #wrap.crt #terminal {
+    text-shadow: 0 0 3px rgba(0,255,68,0.4);
+  }
+  @keyframes crtFlicker {
+    0%   { opacity: 0.98; }
+    100% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="termBg"></div>
+  <div id="terminal"></div>
+  <div id="minimap"><canvas id="minimapCanvas"></canvas></div>
+</div>
+
+<!-- Search bar -->
+<div id="searchBar">
+  <input id="searchInput" type="text" placeholder="Search…" spellcheck="false" />
+  <span class="count" id="searchCount"></span>
+  <button class="sb" id="searchPrev">&#9650;</button>
+  <button class="sb" id="searchNext">&#9660;</button>
+  <label class="cb"><input type="checkbox" id="searchAllTabs" />All tabs</label>
+  <button class="sb" id="searchClose">&#10005;</button>
+</div>
+
+<!-- Context menu -->
+<div id="ctxMenu">
+  <div class="item" data-action="copy">Copy<span class="hint">Ctrl+Shift+C</span></div>
+  <div class="item" data-action="paste">Paste<span class="hint">Ctrl+Shift+V</span></div>
+  <div class="sep"></div>
+  <div class="item" data-action="selectAll">Select All</div>
+  <div class="item" data-action="clear">Clear</div>
+  <div class="sep"></div>
+  <div class="item" data-action="search">Search<span class="hint">Ctrl+Shift+F</span></div>
+  <div class="item" data-action="export">Save Output…<span class="hint">Ctrl+Shift+S</span></div>
+</div>
+
+<script src="xterm.min.js"></script>
+<script src="xterm-addon-fit.min.js"></script>
+<script src="xterm-addon-webgl.min.js"></script>
+<script src="xterm-addon-unicode11.min.js"></script>
+<script src="xterm-addon-search.min.js"></script>
+<script src="xterm-addon-web-links.min.js"></script>
+<script src="xterm-addon-image.min.js"></script>
+<script>
+(function() {
+    const term = new Terminal({
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        fontSize: 14,
+        fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
+        allowTransparency: true,
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff',
+            cursor: '#ffffff',
+            cursorAccent: '#000000',
+            selectionBackground: '#ffffff',
+            selectionForeground: '#000000',
+            black: '#000000',
+            red: '#ff2b7b',
+            green: '#b4fb00',
+            yellow: '#ffef5c',
+            blue: '#6be5ff',
+            magenta: '#c47cff',
+            cyan: '#56ffef',
+            white: '#ffffff',
+            brightBlack: '#888888',
+            brightRed: '#ff2b7b',
+            brightGreen: '#b4fb00',
+            brightYellow: '#ffef5c',
+            brightBlue: '#6be5ff',
+            brightMagenta: '#c47cff',
+            brightCyan: '#56ffef',
+            brightWhite: '#ffffff'
+        },
+        allowProposedApi: true,
+        scrollback: 10000
+    });
+
+    // --- Addons ---
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    const unicode11Addon = new Unicode11Addon.Unicode11Addon();
+    term.loadAddon(unicode11Addon);
+    term.unicode.activeVersion = '11';
+
+    const searchAddon = new SearchAddon.SearchAddon();
+    term.loadAddon(searchAddon);
+
+    try {
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon(function(ev, uri) {
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'openLink', data: uri }));
+        });
+        term.loadAddon(webLinksAddon);
+    } catch (e) { console.warn('Web links addon failed:', e); }
+
+    // File path link provider (Windows paths like C:\foo\bar.txt:42 or /unix/paths)
+    var filePathRegex = /(?:[A-Za-z]:\\[\w\\.\-\s]+(?::\d+)?|\/[\w/.\-]+(?::\d+)?)/g;
+    term.registerLinkProvider({
+        provideLinks: function(lineNumber, callback) {
+            var buffer = term.buffer.active;
+            if (lineNumber < 1 || lineNumber > buffer.length) { callback(undefined); return; }
+            var line = buffer.getLine(lineNumber - 1);
+            if (!line) { callback(undefined); return; }
+            var text = line.translateToString(true);
+            var links = [];
+            var m;
+            filePathRegex.lastIndex = 0;
+            while ((m = filePathRegex.exec(text)) !== null) {
+                links.push({
+                    range: { start: { x: m.index + 1, y: lineNumber }, end: { x: m.index + m[0].length, y: lineNumber } },
+                    text: m[0],
+                    activate: function(ev, linkText) {
+                        window.chrome.webview.postMessage(JSON.stringify({ type: 'openFile', data: linkText }));
+                    }
+                });
+            }
+            callback(links.length > 0 ? links : undefined);
+        }
+    });
+
+    try {
+        const imageAddon = new ImageAddon.ImageAddon();
+        term.loadAddon(imageAddon);
+    } catch (e) { console.warn('Image addon failed:', e); }
+
+    term.open(document.getElementById('terminal'));
+
+    // WebGL is faster but its glyph atlas often leaves stale pixels when the shell redraws
+    // in place (PSReadLine history/list, prediction) without alternate-screen switches.
+    // Flip to true only if you want WebGL and accept possible ghost characters.
+    const USE_WEBGL_TERMINAL_RENDERER = false;
+    let webglLoaded = false;
+    let webglAddon = null;
+    if (USE_WEBGL_TERMINAL_RENDERER) try {
+        webglAddon = new WebglAddon.WebglAddon();
+        webglAddon.onContextLoss(() => { webglAddon.dispose(); webglAddon = null; });
+        term.loadAddon(webglAddon);
+        webglLoaded = true;
+    } catch (e) {
+        console.warn('WebGL addon failed, using canvas renderer:', e);
+    }
+
+    // With WebGL: clear atlas + refresh. With canvas: refresh only (cheap no-op for atlas).
+    function forceFullRedraw() {
+        try { if (webglAddon && typeof webglAddon.clearTextureAtlas === 'function') webglAddon.clearTextureAtlas(); } catch (e) {}
+        try { term.refresh(0, term.rows - 1); } catch (e) {}
+    }
+    window.termForceRedraw = forceFullRedraw;
+
+    fitAddon.fit();
+
+    let resizeTimeout;
+    const observer = new ResizeObserver(() => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            fitAddon.fit();
+            sendResize();
+        }, 50);
+    });
+    observer.observe(document.getElementById('terminal'));
+
+    // --- Input: keyboard -> C# ---
+    term.onData((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'input', data: data }));
+    });
+
+    term.onBinary((data) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'binary', data: data }));
+    });
+
+    term.onTitleChange((title) => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'title', data: title }));
+    });
+
+    // --- Bell: notify host to flash tab ---
+    term.onBell(() => {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'bell' }));
+    });
+
+    // CSI J = "Erase in Display" (cls / clear / Ctrl+L). Returning false lets xterm
+    // process the sequence normally; the queued forceFullRedraw clears the WebGL
+    // texture atlas so glyphs from the previous frame don't overlap new output.
+    let _redrawScheduled = false;
+    function scheduleRedraw() {
+        if (_redrawScheduled) return;
+        _redrawScheduled = true;
+        setTimeout(() => { _redrawScheduled = false; forceFullRedraw(); }, 16);
+    }
+
+    // PSReadLine / zsh repaint large regions with EL (CSI K) and many small writes without
+    // alternate-buffer switches. Coalesce redraws ~one frame after PTY output pauses.
+    let _ptyIdleRedrawTimer = null;
+    function scheduleRedrawAfterPtyIdle() {
+        if (_ptyIdleRedrawTimer) clearTimeout(_ptyIdleRedrawTimer);
+        _ptyIdleRedrawTimer = setTimeout(function() {
+            _ptyIdleRedrawTimer = null;
+            forceFullRedraw();
+        }, 40);
+    }
+
+    try {
+        term.parser.registerCsiHandler({final: 'J'}, function() { scheduleRedraw(); return false; });
+    } catch (e) { /* ignore on older xterm */ }
+    try {
+        term.parser.registerCsiHandler({final: 'K'}, function() { scheduleRedraw(); return false; });
+    } catch (e) { /* ignore on older xterm */ }
+
+    // fzf / vim / etc. use the alternate screen; switching back to the main buffer does not
+    // emit CSI J, so WebGL can keep drawing ghost cells from the TUI over the shell prompt.
+    try {
+        term.buffer.onBufferChange(function() { scheduleRedraw(); });
+    } catch (e) { /* ignore on older xterm */ }
+
+    try {
+        if (typeof term.onWriteParsed === 'function')
+            term.onWriteParsed(function() { scheduleRedrawAfterPtyIdle(); });
+    } catch (e) { /* ignore on older xterm */ }
+
+    // --- OSC 7: CWD tracking (file://host/path) ---
+    // Tolerate backslashes (cmd.exe), forward slashes (PowerShell/bash), and an
+    // optional host segment ("file://localhost/..."). Always normalise Windows paths
+    // to backslashes so the host can compare them against directory entries.
+    term.parser.registerOscHandler(7, function(data) {
+        try {
+            let cwd = data;
+            if (cwd.startsWith('file://')) {
+                cwd = cwd.substring(7);
+                if (!cwd.startsWith('/') && !cwd.startsWith('\\')) {
+                    const slash = cwd.search(/[\/\\]/);
+                    cwd = slash > 0 ? cwd.substring(slash) : '';
+                }
+                try { cwd = decodeURIComponent(cwd); } catch (e) {}
+                if (/^[\/\\][A-Za-z]:/.test(cwd)) cwd = cwd.substring(1);
+            }
+            if (/^[A-Za-z]:/.test(cwd)) cwd = cwd.replace(/\//g, '\\');
+            if (cwd) window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd }));
+        } catch (e) { }
+        return true;
+    });
+
+    // --- OSC 133: Shell Integration (prompt markers) ---
+    // A = prompt start, B = command start, C = command executed, D = command finished (with exit code)
+    term.parser.registerOscHandler(133, function(data) {
+        try {
+            if (!data || data.length === 0) return true;
+            var marker = data.charAt(0);
+            var rest = data.length > 2 ? data.substring(2) : '';
+            // Prompt redraw often happens right after command-finished (OSC 133;D).
+            // Force a full repaint at that boundary to avoid stale fragments that can
+            // survive PSReadLine list/history redraws on startup and after cls.
+            if (marker === 'D') {
+                scheduleRedrawAfterPtyIdle();
+                setTimeout(function() {
+                    try { term.scrollToBottom(); } catch (e) {}
+                    forceFullRedraw();
+                }, 0);
+            }
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'osc133', data: marker + (rest ? ':' + rest : '') }));
+        } catch(e) {}
+        return true;
+    });
+
+    function sendResize() {
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+        }));
+    }
+
+    // --- Output: C# -> terminal ---
+    window.termWrite = function(base64) {
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        term.write(bytes, function() { scheduleRedrawAfterPtyIdle(); });
+    };
+
+    window.termResize = function(cols, rows) {
+        term.resize(cols, rows);
+    };
+
+    window.termFocus = function() {
+        term.focus();
+        scheduleRedraw();
+    };
+
+    window.termClear = function() {
+        term.clear();
+        forceFullRedraw();
+    };
+
+    window.termSetTheme = function(themeJson) {
+        term.options.theme = JSON.parse(themeJson);
+    };
+
+    window.termSetFontSize = function(size) {
+        term.options.fontSize = size;
+        fitAddon.fit();
+    };
+
+    window.termSetFontFamily = function(family) {
+        term.options.fontFamily = family;
+        fitAddon.fit();
+    };
+
+    window.termSetCursorBlink = function(blink) {
+        term.options.cursorBlink = blink;
+    };
+
+    window.termSetCursorStyle = function(style) {
+        term.options.cursorStyle = style;
+    };
+
+    window.termSetScrollback = function(lines) {
+        term.options.scrollback = lines;
+    };
+
+    window.termApplySettingsRaw = function(jsonStr) {
+        const s = JSON.parse(jsonStr);
+        if (s.fontFamily) term.options.fontFamily = s.fontFamily;
+        if (s.fontSize) term.options.fontSize = s.fontSize;
+        if (s.cursorBlink !== undefined) term.options.cursorBlink = s.cursorBlink;
+        if (s.cursorStyle) term.options.cursorStyle = s.cursorStyle;
+        if (s.scrollback) term.options.scrollback = s.scrollback;
+        if (s.theme) {
+            if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+                const t = Object.assign({}, s.theme);
+                t.background = 'rgba(0,0,0,0.62)';
+                term.options.theme = t;
+            } else {
+                term.options.theme = s.theme;
+            }
+            try {
+                term.refresh(0, term.rows - 1);
+            } catch (e) { /* ignore */ }
+        }
+        const bg = document.getElementById('termBg');
+        if (s.useBackgroundImage && s.backgroundImageDataUrl) {
+            bg.style.backgroundImage = 'url(' + JSON.stringify(s.backgroundImageDataUrl) + ')';
+            let op = s.backgroundImageOpacity;
+            if (typeof op !== 'number' || isNaN(op)) op = 0.52;
+            bg.style.opacity = String(Math.max(0, Math.min(1, op)));
+        } else {
+            bg.style.backgroundImage = 'none';
+            bg.style.opacity = '0';
+        }
+        document.body.style.background = s.theme?.background || '#000000';
+        document.getElementById('terminal').style.background = 'transparent';
+        fitAddon.fit();
+    };
+
+    // --- Ctrl + mouse wheel: zoom terminal font (8–32) ---
+    const minFont = 8;
+    const maxFont = 32;
+    let fontWheelAcc = 0;
+    window.addEventListener('wheel', function(e) {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        fontWheelAcc += e.deltaY;
+        const threshold = 40;
+        if (Math.abs(fontWheelAcc) < threshold) return;
+        const delta = fontWheelAcc < 0 ? 1 : -1;
+        fontWheelAcc = 0;
+        let next = Math.round(term.options.fontSize) + delta;
+        if (next < minFont) next = minFont;
+        if (next > maxFont) next = maxFont;
+        if (next === Math.round(term.options.fontSize)) return;
+        term.options.fontSize = next;
+        fitAddon.fit();
+        sendResize();
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'fontSize', fontSize: next }));
+    }, { passive: false, capture: true });
+
+    // --- Copy / Paste (Ctrl+Shift+C / Ctrl+Shift+V) ---
+    term.attachCustomKeyEventHandler(function(ev) {
+        if (ev.type !== 'keydown') return true;
+        const ctrl = ev.ctrlKey, shift = ev.shiftKey;
+        if (ctrl && shift && ev.code === 'KeyC') {
+            const sel = term.getSelection();
+            if (sel) navigator.clipboard.writeText(sel);
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyV') {
+            (async function() {
+                try {
+                    var items = await navigator.clipboard.read();
+                    for (var ci of items) {
+                        var imgType = ci.types.find(function(t) { return t.startsWith('image/'); });
+                        if (imgType) {
+                            var blob = await ci.getType(imgType);
+                            var buf = await blob.arrayBuffer();
+                            var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+                            var seq = '\x1b]1337;File=inline=1;size=' + buf.byteLength + ':' + b64 + '\x07';
+                            term.write(seq);
+                            return;
+                        }
+                    }
+                } catch(e) {}
+                var text = await navigator.clipboard.readText();
+                if (text) term.paste(text);
+            })();
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyF') {
+            toggleSearch();
+            return false;
+        }
+        if (ctrl && shift && ev.code === 'KeyS') {
+            exportBuffer();
+            return false;
+        }
+        return true;
+    });
+
+    // --- Search bar ---
+    const searchBar = document.getElementById('searchBar');
+    const searchInput = document.getElementById('searchInput');
+    const searchCount = document.getElementById('searchCount');
+    let searchVisible = false;
+
+    function toggleSearch() {
+        searchVisible = !searchVisible;
+        if (searchVisible) {
+            searchBar.classList.add('visible');
+            searchInput.focus();
+            searchInput.select();
+        } else {
+            searchBar.classList.remove('visible');
+            searchAddon.clearDecorations();
+            searchCount.textContent = '';
+            _lastAllTabsQuery = '';
+            term.focus();
+        }
+    }
+
+    const searchAllTabsBox = document.getElementById('searchAllTabs');
+    var _lastAllTabsQuery = '';
+
+    function doSearch(direction) {
+        const query = searchInput.value;
+        if (!query) { searchCount.textContent = ''; _lastAllTabsQuery = ''; return; }
+        let found;
+        if (direction === 'prev') {
+            found = searchAddon.findPrevious(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
+        } else {
+            found = searchAddon.findNext(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
+        }
+        searchCount.textContent = found ? '' : 'No results';
+
+        if (searchAllTabsBox.checked && query !== _lastAllTabsQuery) {
+            _lastAllTabsQuery = query;
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'searchAllTabs', data: query }));
+        }
+    }
+
+    searchInput.addEventListener('input', function() { doSearch('next'); });
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doSearch(e.shiftKey ? 'prev' : 'next');
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            toggleSearch();
+        }
+    });
+    document.getElementById('searchNext').addEventListener('click', function() { doSearch('next'); });
+    document.getElementById('searchPrev').addEventListener('click', function() { doSearch('prev'); });
+    document.getElementById('searchClose').addEventListener('click', function() { toggleSearch(); });
+    searchAllTabsBox.addEventListener('change', function() {
+        _lastAllTabsQuery = '';
+        if (searchAllTabsBox.checked && searchInput.value) doSearch('next');
+    });
+
+    // --- Export buffer ---
+    function exportBuffer() {
+        const buf = term.buffer.active;
+        const lines = [];
+        for (let i = 0; i < buf.length; i++) {
+            const line = buf.getLine(i);
+            if (line) lines.push(line.translateToString(true));
+        }
+        const text = lines.join('\n');
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'exportBuffer', data: text }));
+    }
+    window.termExportBuffer = exportBuffer;
+
+    // --- Right-click context menu ---
+    const ctxMenu = document.getElementById('ctxMenu');
+
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        ctxMenu.style.left = e.clientX + 'px';
+        ctxMenu.style.top = e.clientY + 'px';
+        ctxMenu.classList.add('visible');
+    });
+
+    document.addEventListener('click', function() {
+        ctxMenu.classList.remove('visible');
+    });
+
+    ctxMenu.addEventListener('click', function(e) {
+        const item = e.target.closest('.item');
+        if (!item) return;
+        const action = item.dataset.action;
+        ctxMenu.classList.remove('visible');
+        switch (action) {
+            case 'copy': {
+                const sel = term.getSelection();
+                if (sel) navigator.clipboard.writeText(sel);
+                break;
+            }
+            case 'paste':
+                navigator.clipboard.readText().then(function(text) { if (text) term.paste(text); });
+                break;
+            case 'selectAll':
+                term.selectAll();
+                break;
+            case 'clear':
+                term.clear();
+                forceFullRedraw();
+                break;
+            case 'search':
+                if (!searchVisible) toggleSearch();
+                break;
+            case 'export':
+                exportBuffer();
+                break;
+        }
+        term.focus();
+    });
+
+    // --- Minimap ---
+    var minimapEl = document.getElementById('minimap');
+    var minimapCanvas = document.getElementById('minimapCanvas');
+    var minimapCtx = minimapCanvas.getContext('2d');
+    var minimapEnabled = false;
+
+    window.termToggleMinimap = function(on) {
+        minimapEnabled = !!on;
+        minimapEl.classList.toggle('visible', minimapEnabled);
+        if (minimapEnabled) renderMinimap();
+    };
+
+    function renderMinimap() {
+        if (!minimapEnabled) return;
+        var buf = term.buffer.active;
+        var totalLines = buf.length;
+        var viewStart = buf.viewportY;
+        var viewRows = term.rows;
+
+        var w = minimapEl.clientWidth;
+        var h = minimapEl.clientHeight;
+        minimapCanvas.width = w;
+        minimapCanvas.height = h;
+
+        minimapCtx.fillStyle = 'rgba(0,0,0,0.5)';
+        minimapCtx.fillRect(0, 0, w, h);
+
+        if (totalLines <= 0) return;
+        var lineH = Math.max(1, h / totalLines);
+        var maxLines = Math.min(totalLines, Math.ceil(h / lineH));
+        var step = Math.max(1, Math.floor(totalLines / maxLines));
+
+        for (var i = 0; i < totalLines; i += step) {
+            var line = buf.getLine(i);
+            if (!line) continue;
+            var text = line.translateToString(true).trim();
+            if (text.length === 0) continue;
+            var y = Math.floor((i / totalLines) * h);
+            var brightness = Math.min(255, 60 + text.length * 3);
+            minimapCtx.fillStyle = 'rgba(' + brightness + ',' + brightness + ',' + brightness + ',0.5)';
+            var barW = Math.min(w - 2, (text.length / 120) * (w - 2));
+            minimapCtx.fillRect(1, y, Math.max(2, barW), Math.max(1, lineH));
+        }
+
+        var vpY = Math.floor((viewStart / totalLines) * h);
+        var vpH = Math.max(4, (viewRows / totalLines) * h);
+        minimapCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+        minimapCtx.lineWidth = 1;
+        minimapCtx.strokeRect(0, vpY, w, vpH);
+    }
+
+    term.onScroll(function() { if (minimapEnabled) requestAnimationFrame(renderMinimap); });
+    term.onRender(function() { if (minimapEnabled) requestAnimationFrame(renderMinimap); });
+
+    minimapEl.addEventListener('click', function(e) {
+        var rect = minimapEl.getBoundingClientRect();
+        var ratio = (e.clientY - rect.top) / rect.height;
+        var targetLine = Math.floor(ratio * term.buffer.active.length);
+        term.scrollToLine(targetLine);
+    });
+
+    // --- CRT toggle ---
+    window.termToggleCRT = function(on) {
+        document.getElementById('wrap').classList.toggle('crt', !!on);
+    };
+
+    // --- Search all tabs (triggered from host) ---
+    window.termSearchAll = function(query) {
+        if (!searchAddon || !query) return;
+        searchInput.value = query;
+        if (!searchVisible) toggleSearch();
+        searchAddon.findNext(query, { regex: false, caseSensitive: false, decorations: { matchOverviewRuler: '#888' } });
+    };
+
+    // --- Signal ready ---
+    sendResize();
+    term.focus();
+    window.chrome.webview.postMessage(JSON.stringify({ type: 'ready' }));
+})();
+</script>
+</body>
+</html>

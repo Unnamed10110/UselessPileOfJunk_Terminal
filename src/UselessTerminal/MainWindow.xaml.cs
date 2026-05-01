@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
 using UselessTerminal.Controls;
@@ -40,7 +41,22 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private bool _browserPanelOpen;
     private double _browserPanelWidth = 500;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
-    private bool _reallyClosing;
+
+    // Cached last-known-good window bounds. Reading Left/Top/ActualWidth/ActualHeight
+    // on a hidden/minimised window can yield NaN or 0; those would overwrite a perfectly
+    // good saved state, breaking session restore.
+    private double _lastGoodLeft = double.NaN;
+    private double _lastGoodTop = double.NaN;
+    private double _lastGoodWidth = double.NaN;
+    private double _lastGoodHeight = double.NaN;
+
+    // Set true at the end of Loaded. Until then we must NOT persist state, because the
+    // window may have been instantiated solely to be torn down again (e.g. App.OnStartup
+    // calls Shutdown() to hand off to an elevated child — WPF still constructs the
+    // StartupUri window first, and its OnClosing would otherwise wipe the saved tabs).
+    private bool _stateRestoreCompleted;
+
+    private DispatcherTimer? _terminalReflowDebounce;
 
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
@@ -115,6 +131,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         Loaded += (_, _) =>
         {
             RestoreWindowState();
+            ClampWindowIntoVirtualScreen();
+            CaptureWindowBounds();
+            _stateRestoreCompleted = true;
             PopulateShellMenu();
             RegisterQuakeHotkey();
             ApplyWindowBackdrop(SettingsStore.Instance.Current.WindowBackdrop);
@@ -126,17 +145,45 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             };
             statusTimer.Tick += (_, _) => RefreshStatusBar();
             statusTimer.Start();
+
+            // Periodic snapshot of window/tab state so a force-kill or crash still leaves
+            // a usable session to restore. SaveWindowState swallows its own errors.
+            var autoSaveTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(15)
+            };
+            autoSaveTimer.Tick += (_, _) => { try { SaveWindowState(); } catch { } };
+            autoSaveTimer.Start();
+
+            // WebView2 + xterm FitAddon often need a layout pass after the window first appears (pwsh/OMP).
+            Dispatcher.BeginInvoke(new Action(ReflowAllTerminalPanes), DispatcherPriority.ApplicationIdle);
+            Dispatcher.BeginInvoke(new Action(ReflowAllTerminalPanes), DispatcherPriority.ContextIdle);
         };
+
+        SystemEvents_SessionEndingHook();
         StateChanged += MainWindow_StateChanged;
+        LocationChanged += (_, _) => CaptureWindowBounds();
+        SizeChanged += MainWindow_SizeChangedForReflow;
         Activated += (_, _) =>
         {
             _commandNotifier.WindowIsActive = true;
             _commandNotifier.Reset();
+            ReflowAllTerminalPanes();
         };
         Deactivated += (_, _) => _commandNotifier.WindowIsActive = false;
         _commandNotifier.CommandFinished += ShowCommandNotification;
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+    }
+
+    private void SystemEvents_SessionEndingHook()
+    {
+        try
+        {
+            // Save state when Windows is shutting down / signing the user out.
+            SystemEvents.SessionEnding += (_, _) => { try { SaveWindowState(); } catch { } };
+        }
+        catch { }
     }
 
     private void RegisterQuakeHotkey()
@@ -203,7 +250,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         trayMenu.Items.Add("Settings", null, (_, _) => Dispatcher.Invoke(() => { ShowFromTray(); OpenSettings(); }));
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(() => { _reallyClosing = true; Close(); }));
+        trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(Close));
 
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
@@ -226,8 +273,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        // Do not Hide() on minimize — it breaks DWM thumbnails / taskbar previews and can leave a blank surface on restore.
         if (WindowState == System.Windows.WindowState.Minimized)
-            Hide();
+            ShowInTaskbar = true;
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -436,15 +484,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         termControl.BufferExportRequested += text => Dispatcher.Invoke(() => ExportBufferToFile(text));
 
-        termControl.OutputProduced += () => Dispatcher.InvokeAsync(() =>
-        {
-            if (_activeTab != tabState && !tabState.HasActivity)
-            {
-                tabState.HasActivity = true;
-                UpdateTabHeader(tabState);
-            }
-            _commandNotifier.OnOutputReceived(tabState.Title);
-        });
+        termControl.OutputProduced += () => ScheduleTabOutputNotify(tabState);
 
         termControl.CwdChanged += cwd => Dispatcher.Invoke(() =>
         {
@@ -505,6 +545,41 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             UpdateTabHeader(tab);
     }
 
+    private void ScheduleTabOutputNotify(TerminalTabState tabState)
+    {
+        bool schedule = false;
+        lock (tabState.OutputNotifyLock)
+        {
+            tabState.CoalescedOutputCount++;
+            if (!tabState.OutputNotifyScheduled)
+            {
+                tabState.OutputNotifyScheduled = true;
+                schedule = true;
+            }
+        }
+        if (schedule)
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => ProcessTabOutputNotify(tabState)));
+    }
+
+    private void ProcessTabOutputNotify(TerminalTabState tabState)
+    {
+        int count;
+        lock (tabState.OutputNotifyLock)
+        {
+            count = tabState.CoalescedOutputCount;
+            tabState.CoalescedOutputCount = 0;
+            tabState.OutputNotifyScheduled = false;
+        }
+        if (count == 0) return;
+
+        if (_activeTab != tabState && !tabState.HasActivity)
+        {
+            tabState.HasActivity = true;
+            UpdateTabHeader(tabState);
+        }
+        _commandNotifier.OnOutputReceived(tabState.Title, count);
+    }
+
     private void MoveTab(int fromIndex, int toIndexBeforeRemove)
     {
         if (fromIndex < 0 || fromIndex >= _tabs.Count) return;
@@ -553,6 +628,15 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         double h = first.ActualHeight;
         if (h <= 0) h = 32;
         return posInTabStrip.Y <= h + 12;
+    }
+
+    private void TabStrip_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        // Translate vertical wheel into horizontal scroll for the tab strip.
+        var sv = FindNamedChild<ScrollViewer>(TabStrip, "TabScrollViewer");
+        if (sv is null) return;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
 
     private void TabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1511,6 +1595,11 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (state.IsMaximized)
             WindowState = System.Windows.WindowState.Maximized;
 
+        // Ensure we are actually visible (tray/Hide interactions or bad persisted state).
+        if (Visibility != Visibility.Visible)
+            Visibility = Visibility.Visible;
+        Show();
+
         if (state.SessionPanelWidth >= 160 && state.SessionPanelWidth <= 900)
             _sessionPanelWidth = state.SessionPanelWidth;
 
@@ -1522,7 +1611,14 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             foreach (var ts in state.Tabs)
             {
                 string? clr = string.IsNullOrEmpty(ts.HighlightColor) ? null : ts.HighlightColor;
-                AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
+                try
+                {
+                    AddTab(ts.Title, ts.Command, ts.WorkingDirectory, ts.StartingCommand, clr, lockTitle: ts.Renamed);
+                }
+                catch
+                {
+                    // A bad command saved from a previous version shouldn't drop the rest.
+                }
             }
             if (state.ActiveTabIndex >= 0 && state.ActiveTabIndex < _tabs.Count)
                 TabStrip.SelectedItem = _tabs[state.ActiveTabIndex].TabItem;
@@ -1533,15 +1629,129 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Keeps the window on-screen when monitors change or saved geometry points to a disconnected display.
+    /// </summary>
+    private void ClampWindowIntoVirtualScreen()
+    {
+        try
+        {
+            double minW = MinWidth > 0 ? MinWidth : 480;
+            double minH = MinHeight > 0 ? MinHeight : 360;
+            if (Width < minW || double.IsNaN(Width) || double.IsInfinity(Width)) Width = 1200;
+            if (Height < minH || double.IsNaN(Height) || double.IsInfinity(Height)) Height = 800;
+
+            double vsLeft = SystemParameters.VirtualScreenLeft;
+            double vsTop = SystemParameters.VirtualScreenTop;
+            double vsWidth = SystemParameters.VirtualScreenWidth;
+            double vsHeight = SystemParameters.VirtualScreenHeight;
+            double vsRight = vsLeft + vsWidth;
+            double vsBottom = vsTop + vsHeight;
+
+            if (Width > vsWidth) Width = Math.Max(minW, vsWidth - 80);
+            if (Height > vsHeight) Height = Math.Max(minH, vsHeight - 80);
+
+            if (double.IsNaN(Left) || double.IsInfinity(Left)) Left = vsLeft + 48;
+            if (double.IsNaN(Top) || double.IsInfinity(Top)) Top = vsTop + 48;
+
+            // If the saved bounds are completely outside the visible desktop, recenter.
+            var windowRect = new Rect(Left, Top, Width, Height);
+            var virtualRect = new Rect(vsLeft, vsTop, vsWidth, vsHeight);
+            bool offscreen = !windowRect.IntersectsWith(virtualRect);
+            if (offscreen)
+            {
+                Left = vsLeft + Math.Max(0, (vsWidth - Width) / 2);
+                Top = vsTop + Math.Max(0, (vsHeight - Height) / 2);
+                return;
+            }
+
+            // Keep at least part of the titlebar and body visible.
+            const double minVisible = 120;
+            if (Left < vsLeft - (Width - minVisible))
+                Left = vsLeft - (Width - minVisible);
+            else if (Left > vsRight - minVisible)
+                Left = vsRight - minVisible;
+
+            if (Top < vsTop)
+                Top = vsTop;
+            else if (Top > vsBottom - minVisible)
+                Top = vsBottom - minVisible;
+        }
+        catch { /* ignore */ }
+    }
+
+    private void MainWindow_SizeChangedForReflow(object sender, SizeChangedEventArgs e)
+    {
+        CaptureWindowBounds();
+        ScheduleReflowAllTerminalPanesDebounced();
+    }
+
+    private void ScheduleReflowAllTerminalPanesDebounced()
+    {
+        _terminalReflowDebounce ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(120),
+            DispatcherPriority.Background,
+            (_, _) =>
+            {
+                _terminalReflowDebounce!.Stop();
+                ReflowAllTerminalPanes();
+            },
+            Dispatcher);
+
+        _terminalReflowDebounce.Stop();
+        _terminalReflowDebounce.Start();
+    }
+
+    private void ReflowAllTerminalPanes()
+    {
+        foreach (var tab in _tabs)
+        {
+            foreach (var pane in tab.AllPanes)
+                pane.RequestTerminalReflow();
+        }
+    }
+
+    private void CaptureWindowBounds()
+    {
+        if (WindowState != System.Windows.WindowState.Normal) return;
+        if (!double.IsNaN(Left) && !double.IsInfinity(Left)) _lastGoodLeft = Left;
+        if (!double.IsNaN(Top) && !double.IsInfinity(Top)) _lastGoodTop = Top;
+        // Prefer ActualWidth/Height (post-layout) but fall back to the requested
+        // Width/Height during early lifetime when ActualWidth may still be 0.
+        double w = ActualWidth > 0 ? ActualWidth : Width;
+        double h = ActualHeight > 0 ? ActualHeight : Height;
+        if (w > 0 && !double.IsNaN(w)) _lastGoodWidth = w;
+        if (h > 0 && !double.IsNaN(h)) _lastGoodHeight = h;
+    }
+
     private void SaveWindowState()
     {
+        // Refuse to persist before the window has finished its initial restore. This
+        // protects against the elevation hand-off where App.OnStartup calls Shutdown()
+        // — WPF still constructs StartupUri (this window) and triggers OnClosing on it
+        // with no tabs, which would otherwise wipe the on-disk session.
+        if (!_stateRestoreCompleted) return;
+
+        // RestoreBounds is Rect.Empty (NaN) when window is in Normal state, which makes
+        // System.Text.Json throw on serialize and the file silently never updates.
+        // Prefer the cached bounds we captured during the last LocationChanged/SizeChanged.
+        bool isMaximized = WindowState == System.Windows.WindowState.Maximized;
+        Rect bounds = isMaximized
+            ? RestoreBounds
+            : new Rect(_lastGoodLeft, _lastGoodTop, _lastGoodWidth, _lastGoodHeight);
+
+        double left = double.IsNaN(bounds.Left) || double.IsInfinity(bounds.Left) ? 100 : bounds.Left;
+        double top = double.IsNaN(bounds.Top) || double.IsInfinity(bounds.Top) ? 100 : bounds.Top;
+        double width = double.IsNaN(bounds.Width) || double.IsInfinity(bounds.Width) || bounds.Width <= 0 ? 1200 : bounds.Width;
+        double height = double.IsNaN(bounds.Height) || double.IsInfinity(bounds.Height) || bounds.Height <= 0 ? 800 : bounds.Height;
+
         var state = new Models.WindowState
         {
-            Left = RestoreBounds.Left,
-            Top = RestoreBounds.Top,
-            Width = RestoreBounds.Width,
-            Height = RestoreBounds.Height,
-            IsMaximized = WindowState == System.Windows.WindowState.Maximized,
+            Left = left,
+            Top = top,
+            Width = width,
+            Height = height,
+            IsMaximized = isMaximized,
             SessionPanelOpen = _sessionPanelOpen,
             SessionPanelWidth = _sessionPanelWidth,
             ActiveTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : 0
@@ -1553,7 +1763,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             {
                 Title = tab.Title,
                 Command = tab.Command,
-                WorkingDirectory = tab.WorkingDirectory,
+                WorkingDirectory = tab.Control.CurrentWorkingDirectory ?? tab.WorkingDirectory,
                 StartingCommand = tab.StartingCommand,
                 HighlightColor = tab.HighlightColor,
                 Renamed = tab.Renamed
@@ -1578,7 +1788,32 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         RefreshAllTabChrome();
         if (TabStrip.SelectedItem is TabItem tabItem && tabItem.Tag is TerminalTabState tab)
+        {
             ActivateTab(tab);
+            EnsureTabVisible(tabItem);
+        }
+    }
+
+    private void EnsureTabVisible(TabItem tabItem)
+    {
+        var sv = FindNamedChild<ScrollViewer>(TabStrip, "TabScrollViewer");
+        if (sv is null) return;
+        // Defer until layout finalises so ActualWidth/positions are valid for new tabs.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                if (tabItem.ActualWidth <= 0) tabItem.UpdateLayout();
+                Point topLeft = tabItem.TranslatePoint(new Point(0, 0), sv);
+                double left = topLeft.X + sv.HorizontalOffset;
+                double right = left + tabItem.ActualWidth;
+                if (left < sv.HorizontalOffset)
+                    sv.ScrollToHorizontalOffset(Math.Max(0, left - 8));
+                else if (right > sv.HorizontalOffset + sv.ViewportWidth)
+                    sv.ScrollToHorizontalOffset(Math.Max(0, right - sv.ViewportWidth + 8));
+            }
+            catch { }
+        }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void TabCloseButton_Click(object sender, RoutedEventArgs e)
@@ -1589,13 +1824,6 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_reallyClosing)
-        {
-            e.Cancel = true;
-            Hide();
-            return;
-        }
-
         if (HasRunningProcesses())
         {
             var result = System.Windows.MessageBox.Show(
@@ -1605,7 +1833,6 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 System.Windows.MessageBoxImage.Warning);
             if (result != System.Windows.MessageBoxResult.Yes)
             {
-                _reallyClosing = false;
                 e.Cancel = true;
                 return;
             }
@@ -1620,6 +1847,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         UnregisterQuakeHotkey();
         SaveWindowState();
+
+        // Block any auto-save tick already queued on the dispatcher from running after we
+        // clear _tabs — it would persist an empty session and break restore on next launch.
+        _stateRestoreCompleted = false;
 
         foreach (var tab in _tabs)
         {
@@ -1931,6 +2162,11 @@ internal sealed class TerminalTabState
     public List<GridSplitter> Splitters { get; } = new();
     public int PaneCount => 1 + ExtraPanes.Count;
     public TerminalControl? FocusedPane { get; set; }
+
+    /// <summary>Coalesces high-frequency <see cref="TerminalControl.OutputProduced"/> to reduce UI-thread churn.</summary>
+    public readonly object OutputNotifyLock = new();
+    public int CoalescedOutputCount;
+    public bool OutputNotifyScheduled;
 
     public List<TerminalControl> AllPanes
     {

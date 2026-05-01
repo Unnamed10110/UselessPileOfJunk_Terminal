@@ -33,9 +33,17 @@ public static class WindowStateStore
         try
         {
             string? dir = Path.GetDirectoryName(StatePath);
-            if (dir is not null) Directory.CreateDirectory(dir);
+            if (string.IsNullOrEmpty(dir))
+                return;
+
+            Directory.CreateDirectory(dir);
             string json = JsonSerializer.Serialize(state, JsonOptions);
-            File.WriteAllText(StatePath, json);
+            string tempPath = Path.Combine(dir, "windowstate.json.tmp");
+            File.WriteAllText(tempPath, json);
+            if (File.Exists(StatePath))
+                File.Replace(tempPath, StatePath, destinationBackupFileName: null);
+            else
+                File.Move(tempPath, StatePath);
         }
         catch { }
     }

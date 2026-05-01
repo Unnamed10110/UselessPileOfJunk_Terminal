@@ -4,6 +4,9 @@ public sealed class AppSettings
 {
     public string FontFamily { get; set; } = "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace";
     public int FontSize { get; set; } = 14;
+
+    /// <summary>CSS font-weight for normal text (100–900). Bold ANSI uses a heavier derived weight.</summary>
+    public int FontWeight { get; set; } = 400;
     public bool CursorBlink { get; set; } = true;
     public string CursorStyle { get; set; } = "bar";
     public int Scrollback { get; set; } = 10000;
