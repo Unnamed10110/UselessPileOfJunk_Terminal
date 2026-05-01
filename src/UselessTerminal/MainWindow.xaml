@@ -150,7 +150,25 @@
                                     PreviewMouseLeftButtonUp="TabStrip_PreviewMouseLeftButtonUp"
                                     PreviewDragOver="TabStrip_PreviewDragOver"
                                     Drop="TabStrip_Drop"
-                                    SelectionChanged="TabStrip_SelectionChanged">
+                                    SelectionChanged="TabStrip_SelectionChanged"
+                                    PreviewMouseWheel="TabStrip_PreviewMouseWheel">
+                            <TabControl.Template>
+                                <!-- Force a single-line, horizontally scrollable tab strip.
+                                     The actual terminal content is rendered separately in TerminalHost,
+                                     so the TabControl is used purely for the header strip. -->
+                                <ControlTemplate TargetType="TabControl">
+                                    <ScrollViewer x:Name="TabScrollViewer"
+                                                  HorizontalScrollBarVisibility="Hidden"
+                                                  VerticalScrollBarVisibility="Disabled"
+                                                  CanContentScroll="False"
+                                                  Focusable="False">
+                                        <StackPanel x:Name="HeaderPanel"
+                                                    IsItemsHost="True"
+                                                    Orientation="Horizontal"
+                                                    Background="Transparent" />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </TabControl.Template>
                             <TabControl.ItemContainerStyle>
                                 <Style TargetType="TabItem">
                                     <Setter Property="Background" Value="Transparent" />

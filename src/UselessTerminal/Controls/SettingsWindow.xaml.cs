@@ -48,6 +48,10 @@ public partial class SettingsWindow : Window
         FontSizeSlider.Value = _settings.FontSize;
         FontSizeLabel.Text = _settings.FontSize.ToString();
 
+        int fw = Math.Clamp(_settings.FontWeight, 300, 700);
+        FontWeightSlider.Value = fw;
+        FontWeightLabel.Text = fw.ToString();
+
         foreach (ComboBoxItem item in CursorStyleBox.Items)
         {
             if ((string)item.Content == _settings.CursorStyle)
@@ -234,6 +238,12 @@ public partial class SettingsWindow : Window
             FontSizeLabel.Text = ((int)e.NewValue).ToString();
     }
 
+    private void FontWeightSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (FontWeightLabel is not null)
+            FontWeightLabel.Text = ((int)e.NewValue).ToString();
+    }
+
     private void ResetDefaults_Click(object sender, RoutedEventArgs e)
     {
         _settings = new AppSettings();
@@ -244,6 +254,7 @@ public partial class SettingsWindow : Window
     {
         _settings.FontFamily = FontFamilyBox.Text;
         _settings.FontSize = (int)FontSizeSlider.Value;
+        _settings.FontWeight = Math.Clamp((int)FontWeightSlider.Value, 300, 700);
         _settings.CursorBlink = CursorBlinkBox.IsChecked == true;
         _settings.CursorStyle = (CursorStyleBox.SelectedItem as ComboBoxItem)?.Content as string ?? "bar";
         if (int.TryParse(ScrollbackBox.Text, out int sb) && sb > 0)

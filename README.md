@@ -2,6 +2,13 @@
 
 A fast Windows terminal frontend wrapper built with WPF + WebView2 + xterm.js, featuring a toggleable session management panel inspired by MobaXterm, a built-in AI browser panel, and power-user features like workspaces, shell integration, session recording, and fully configurable keybindings.
 
+## Recent updates
+
+- **Session / window restore** — `windowstate.json` is written atomically; state is saved on an interval, on logout/shutdown, and when hiding to the tray. Restoring no longer fails from bad bounds while minimized, and the app avoids wiping saved tabs during an elevated relaunch or before the first load finishes; a single bad saved tab command no longer blocks the others.
+- **Terminal** — WebGL redraw after clear/CLS so glyphs do not overlap; OSC 7 path handling tolerates more Windows `file://` forms.
+- **Shell CWD** — PowerShell integration runs via launch arguments where possible; CMD and bash-like shells get a startup hook so CWD flows to the status bar more reliably.
+- **Tabs** — Tab row is a single horizontal strip with scroll; mouse wheel pans it when over the tabs.
+
 ## Features
 
 ### Core Terminal
@@ -92,7 +99,7 @@ All shortcuts are configurable via `keybindings.json`.
 | Win+\` | Quake mode (toggle window) |
 
 ## Usage
-- Terminal appearence
+- Terminal appearance
 
 ![View](UselessTerminal_04_04_2026_16_09_09.png)
 
