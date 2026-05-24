@@ -133,8 +133,8 @@
 
 <!-- Context menu -->
 <div id="ctxMenu">
-  <div class="item" data-action="copy">Copy<span class="hint">Ctrl+Shift+C</span></div>
-  <div class="item" data-action="paste">Paste<span class="hint">Ctrl+Shift+V</span></div>
+  <div class="item" data-action="copy">Copy<span class="hint">Ctrl+C</span></div>
+  <div class="item" data-action="paste">Paste<span class="hint">Ctrl+V</span></div>
   <div class="sep"></div>
   <div class="item" data-action="selectAll">Select All</div>
   <div class="item" data-action="clear">Clear</div>
@@ -542,34 +542,48 @@
         window.chrome.webview.postMessage(JSON.stringify({ type: 'fontSize', fontSize: next }));
     }, { passive: false, capture: true });
 
-    // --- Copy / Paste (Ctrl+Shift+C / Ctrl+Shift+V) ---
+    // --- Copy / Paste (Ctrl+C / Ctrl+V; Ctrl+Shift+C / Ctrl+Shift+V still supported) ---
+    function copySelectionToClipboard() {
+        const sel = term.getSelection();
+        if (sel) navigator.clipboard.writeText(sel);
+    }
+
+    function pasteFromClipboard() {
+        (async function() {
+            try {
+                var items = await navigator.clipboard.read();
+                for (var ci of items) {
+                    var imgType = ci.types.find(function(t) { return t.startsWith('image/'); });
+                    if (imgType) {
+                        var blob = await ci.getType(imgType);
+                        var buf = await blob.arrayBuffer();
+                        var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+                        var seq = '\x1b]1337;File=inline=1;size=' + buf.byteLength + ':' + b64 + '\x07';
+                        term.write(seq);
+                        return;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            try {
+                var text = await navigator.clipboard.readText();
+                if (text) term.paste(text);
+            } catch (e) { /* ignore */ }
+        })();
+    }
+
     term.attachCustomKeyEventHandler(function(ev) {
         if (ev.type !== 'keydown') return true;
         const ctrl = ev.ctrlKey, shift = ev.shiftKey;
-        if (ctrl && shift && ev.code === 'KeyC') {
-            const sel = term.getSelection();
-            if (sel) navigator.clipboard.writeText(sel);
-            return false;
+        if (ctrl && ev.code === 'KeyC') {
+            if (term.getSelection()) {
+                copySelectionToClipboard();
+                return false;
+            }
+            if (shift) return false;
+            return true;
         }
-        if (ctrl && shift && ev.code === 'KeyV') {
-            (async function() {
-                try {
-                    var items = await navigator.clipboard.read();
-                    for (var ci of items) {
-                        var imgType = ci.types.find(function(t) { return t.startsWith('image/'); });
-                        if (imgType) {
-                            var blob = await ci.getType(imgType);
-                            var buf = await blob.arrayBuffer();
-                            var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
-                            var seq = '\x1b]1337;File=inline=1;size=' + buf.byteLength + ':' + b64 + '\x07';
-                            term.write(seq);
-                            return;
-                        }
-                    }
-                } catch(e) {}
-                var text = await navigator.clipboard.readText();
-                if (text) term.paste(text);
-            })();
+        if (ctrl && ev.code === 'KeyV') {
+            pasteFromClipboard();
             return false;
         }
         if (ctrl && shift && ev.code === 'KeyF') {
@@ -676,13 +690,11 @@
         const action = item.dataset.action;
         ctxMenu.classList.remove('visible');
         switch (action) {
-            case 'copy': {
-                const sel = term.getSelection();
-                if (sel) navigator.clipboard.writeText(sel);
+            case 'copy':
+                copySelectionToClipboard();
                 break;
-            }
             case 'paste':
-                navigator.clipboard.readText().then(function(text) { if (text) term.paste(text); });
+                pasteFromClipboard();
                 break;
             case 'selectAll':
                 term.selectAll();
