@@ -249,7 +249,7 @@ D:\repos\UselessPileOfJunk_Terminal\publish\createdump.exe
 D:\repos\UselessPileOfJunk_Terminal\publish\hostfxr.dll
 D:\repos\UselessPileOfJunk_Terminal\publish\hostpolicy.dll
 D:\repos\UselessPileOfJunk_Terminal\publish\mscordaccore.dll
-D:\repos\UselessPileOfJunk_Terminal\publish\mscordaccore_amd64_amd64_9.0.1526.17522.dll
+D:\repos\UselessPileOfJunk_Terminal\publish\mscordaccore_amd64_amd64_9.0.1626.22923.dll
 D:\repos\UselessPileOfJunk_Terminal\publish\mscordbi.dll
 D:\repos\UselessPileOfJunk_Terminal\publish\mscorrc.dll
 D:\repos\UselessPileOfJunk_Terminal\publish\msquic.dll

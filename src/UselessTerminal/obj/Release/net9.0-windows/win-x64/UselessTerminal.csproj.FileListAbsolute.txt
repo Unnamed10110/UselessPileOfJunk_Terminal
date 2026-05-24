@@ -521,4 +521,4 @@ D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windo
 D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windows\win-x64\Controls\CommandPaletteDialog.g.cs
 D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windows\win-x64\Controls\BrowserPanel.baml
 D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\obj\Release\net9.0-windows\win-x64\Controls\BrowserPanel.g.cs
-D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\bin\Release\net9.0-windows\win-x64\mscordaccore_amd64_amd64_9.0.1526.17522.dll
+D:\repos\UselessPileOfJunk_Terminal\src\UselessTerminal\bin\Release\net9.0-windows\win-x64\mscordaccore_amd64_amd64_9.0.1626.22923.dll
