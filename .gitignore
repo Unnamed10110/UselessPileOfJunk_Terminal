@@ -1,11 +1,27 @@
+# Build outputs
 bin/
 obj/
+artifacts/
+publish/
+installer/
+publish.zip
+
+# Visual Studio / Rider
 .vs/
 *.user
 *.suo
 *.cache
+
+# NuGet
 packages/
+
+# Node (if used under Assets/tools)
 node_modules/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
 
 # Local tooling / assistant config (keep out of the repo)
 .claude/
@@ -15,10 +31,7 @@ node_modules/
 .windsurfrules
 .mcp.json
 .opencode.json
-publish.zip
 
-# Build-Installer.ps1 output
-installer/
 AGENTS.md
 CLAUDE.md
 GEMINI.md
