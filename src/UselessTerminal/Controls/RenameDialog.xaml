@@ -6,20 +6,21 @@
     Width="360" SizeToContent="Height"
     WindowStartupLocation="CenterOwner"
     ResizeMode="NoResize"
-    Background="#000000"
-    Foreground="#ffffff">
+    Background="{DynamicResource Ui.ChromeBackground}"
+    Foreground="{DynamicResource Ui.Foreground}">
 
     <StackPanel Margin="20">
         <TextBox x:Name="NameBox" FontSize="14" Padding="8,6"
-                 Background="#000000" Foreground="#ffffff"
-                 BorderBrush="#555555" BorderThickness="1"
+                 Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                 BorderBrush="{DynamicResource Ui.Accent}" BorderThickness="1"
+                 CaretBrush="{DynamicResource Ui.Foreground}"
                  KeyDown="NameBox_KeyDown" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button Content="Cancel" Click="Cancel_Click" Padding="14,6"
-                    Margin="0,0,8,0" Background="#000000" Foreground="#ffffff"
-                    BorderBrush="#555555" BorderThickness="1" />
+                    Margin="0,0,8,0" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.Foreground}"
+                    BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             <Button Content="OK" Click="Ok_Click" Padding="14,6"
-                    Background="#ffffff" Foreground="#000000"
+                    Background="{DynamicResource Ui.TabSelectedBackground}" Foreground="{DynamicResource Ui.TabSelectedForeground}"
                     BorderThickness="0" FontWeight="Bold" />
         </StackPanel>
     </StackPanel>

@@ -126,6 +126,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         };
 
         SettingsStore.Instance.Load();
+        UiChrome.Apply(SettingsStore.Instance.Current);
         SettingsStore.Instance.SettingsChanged += OnSettingsChanged;
 
         Loaded += (_, _) =>
@@ -137,6 +138,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             PopulateShellMenu();
             RegisterQuakeHotkey();
             ApplyWindowBackdrop(SettingsStore.Instance.Current.WindowBackdrop);
+            ApplyUiScale(SettingsStore.Instance.Current.UiScale);
             InitializeTrayIcon();
 
             var statusTimer = new System.Windows.Threading.DispatcherTimer
@@ -398,7 +400,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             ? new GridLength(_sessionPanelWidth, GridUnitType.Pixel)
             : new GridLength(0);
         SessionSplitterColumn.Width = _sessionPanelOpen
-            ? new GridLength(5)
+            ? new GridLength(1)
             : new GridLength(0);
     }
 
@@ -537,6 +539,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         RenumberTabs();
         ActivateTab(tabState);
+        ApplyUiScale(SettingsStore.Instance.Current.UiScale);
     }
 
     private void RenumberTabs()
@@ -632,6 +635,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     private void TabStrip_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (Keyboard.Modifiers == ModifierKeys.Control) return;
+
         // Translate vertical wheel into horizontal scroll for the tab strip.
         var sv = FindNamedChild<ScrollViewer>(TabStrip, "TabScrollViewer");
         if (sv is null) return;
@@ -815,15 +820,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         if (!tab.Started)
         {
-            tab.Control.StartSession(tab.Command, tab.WorkingDirectory);
+            tab.Control.StartSession(tab.Command, tab.WorkingDirectory, startingCommand: tab.StartingCommand);
             tab.Started = true;
-
-            if (!string.IsNullOrWhiteSpace(tab.StartingCommand))
-            {
-                Task.Delay(500).ContinueWith(_ =>
-                    Dispatcher.Invoke(() => tab.Control.SendCommand(tab.StartingCommand!)),
-                    TaskScheduler.Default);
-            }
         }
 
         if (tab.FocusedPane is null) tab.FocusedPane = tab.Control;
@@ -879,9 +877,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     {
         var menu = new ContextMenu
         {
-            Background = new SolidColorBrush(Colors.Black),
-            Foreground = new SolidColorBrush(Colors.White),
-            BorderBrush = new SolidColorBrush(ParseHexColor("#555555")),
+            Background = TryFindResource("Ui.CardBackground") as Brush ?? new SolidColorBrush(Colors.Black),
+            Foreground = TryFindResource("Ui.Foreground") as Brush ?? new SolidColorBrush(Colors.White),
+            BorderBrush = TryFindResource("Ui.CardBorder") as Brush ?? new SolidColorBrush(ParseHexColor("#555555")),
             BorderThickness = new Thickness(1)
         };
 
@@ -1000,23 +998,36 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private void UpdateTabColorBar(TerminalTabState tab)
     {
         bool selected = tab.TabItem.IsSelected;
+        var s = SettingsStore.Instance.Current;
+        var tabFg = ParseHexColor(s.UiTabForeground);
+        var selBg = ParseHexColor(s.UiTabSelectedBackground);
+        var selFg = ParseHexColor(s.UiTabSelectedForeground);
 
         if (selected)
         {
-            tab.TabItem.Background = Brushes.White;
-            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0));
+            if (string.IsNullOrEmpty(tab.HighlightColor))
+            {
+                tab.TabItem.Background = new SolidColorBrush(selBg);
+                tab.TabItem.Foreground = new SolidColorBrush(selFg);
+            }
+            else
+            {
+                var color = ParseHexColor(tab.HighlightColor);
+                tab.TabItem.Background = new SolidColorBrush(color);
+                tab.TabItem.Foreground = new SolidColorBrush(ParseHexColor(ThemePresets.ContrastFg(tab.HighlightColor)));
+            }
         }
         else if (string.IsNullOrEmpty(tab.HighlightColor))
         {
             tab.TabItem.Background = Brushes.Transparent;
-            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+            tab.TabItem.Foreground = new SolidColorBrush(tabFg);
         }
         else
         {
             var color = ParseHexColor(tab.HighlightColor);
             color.A = 90;
             tab.TabItem.Background = new SolidColorBrush(color);
-            tab.TabItem.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+            tab.TabItem.Foreground = new SolidColorBrush(tabFg);
         }
 
         tab.TabItem.ApplyTemplate();
@@ -1027,7 +1038,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         if (selected)
         {
             if (string.IsNullOrEmpty(tab.HighlightColor))
-                tabBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
+                tabBorder.BorderBrush = new SolidColorBrush(selBg);
             else
                 tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor));
         }
@@ -1128,7 +1139,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             return;
         }
 
-        var splitterBrush = new SolidColorBrush(ParseHexColor("#00FF44"));
+        var splitterBrush = TryFindResource("Ui.Splitter") as Brush
+                            ?? new SolidColorBrush(ParseHexColor(SettingsStore.Instance.Current.UiSplitter));
 
         if (count == 2)
         {
@@ -1561,6 +1573,30 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                 pane.ApplySettings(settings);
         }
         ApplyWindowBackdrop(settings.WindowBackdrop);
+        ApplyUiScale(settings.UiScale);
+        RefreshAllTabChrome();
+    }
+
+    private void ApplyUiScale(double scale)
+    {
+        UiChrome.Apply(SettingsStore.Instance.Current);
+
+        // Do not use LayoutTransform: it rasterizes chrome and makes labels/icons fuzzy.
+        if (TabChromeBar is not null) TabChromeBar.LayoutTransform = Transform.Identity;
+        if (StatusBarBorder is not null) StatusBarBorder.LayoutTransform = Transform.Identity;
+        if (SessionPanelChrome is not null) SessionPanelChrome.LayoutTransform = Transform.Identity;
+        if (BrowserPanelChrome is not null) BrowserPanelChrome.LayoutTransform = Transform.Identity;
+    }
+
+    private void MainWindow_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Control) return;
+        if (FindParent<Microsoft.Web.WebView2.Wpf.WebView2>(e.OriginalSource as DependencyObject) is not null)
+            return;
+
+        e.Handled = true;
+        double next = SettingsStore.Instance.Current.UiScale + (e.Delta > 0 ? 0.05 : -0.05);
+        SettingsStore.Instance.UpdateUiScale(next);
     }
 
     private void ApplyWindowBackdrop(string backdrop)
@@ -1574,7 +1610,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         WindowBackdropType = type;
 
         if (type == WindowBackdropType.None)
-            Background = new SolidColorBrush(Color.FromRgb(0, 0, 0));
+            Background = TryFindResource("Ui.ChromeBackground") as Brush
+                         ?? new SolidColorBrush(Color.FromRgb(0, 0, 0));
         else
             Background = Brushes.Transparent;
     }

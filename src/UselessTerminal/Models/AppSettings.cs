@@ -17,6 +17,45 @@ public sealed class AppSettings
     /// <summary>Default text, prompt, and normal output.</summary>
     public string TextDefault { get; set; } = "#ffffff";
 
+    /// <summary>Color of typed input (PSReadLine command/default in PowerShell).</summary>
+    public string ColorInput { get; set; } = "#ffffff";
+
+    /// <summary>WPF chrome scale (tabs, session panel, status bar). 0.75–2.0.</summary>
+    public double UiScale { get; set; } = 1.0;
+
+    /// <summary>Font family for tabs, session cards, folder cards, and status bar.</summary>
+    public string UiFontFamily { get; set; } = "Segoe UI";
+
+    /// <summary>Base UI font size (session card titles). 10–22.</summary>
+    public int UiFontSize { get; set; } = 13;
+
+    /// <summary>UI font weight 300–700.</summary>
+    public int UiFontWeight { get; set; } = 400;
+
+    /// <summary>Glyph hinting: Sharp, Balanced, or Smooth.</summary>
+    public string UiSharpness { get; set; } = "Sharp";
+
+    public string UiForeground { get; set; } = "#ffffff";
+    public string UiForegroundMuted { get; set; } = "#888888";
+    public string UiAccent { get; set; } = "#6be5ff";
+    public string UiHighlight { get; set; } = "#c47cff";
+    public string UiSuccess { get; set; } = "#b4fb00";
+    public string UiWarning { get; set; } = "#ffef5c";
+    public string UiError { get; set; } = "#ff2b7b";
+    public string UiChromeBackground { get; set; } = "#000000";
+    public string UiCardBackground { get; set; } = "#0d1b1f";
+    public string UiCardBorder { get; set; } = "#1e4055";
+    public string UiFolderSelectedBackground { get; set; } = "#18323a";
+    public string UiTabForeground { get; set; } = "#ffffff";
+    public string UiTabSelectedBackground { get; set; } = "#6be5ff";
+    public string UiTabSelectedForeground { get; set; } = "#111111";
+    public string UiStatusBackground { get; set; } = "#11252a";
+    public string UiIcon { get; set; } = "#6be5ff";
+    public string UiInputBackground { get; set; } = "#121212";
+    public string UiInputForeground { get; set; } = "#ffffff";
+    public string UiHoverBackground { get; set; } = "#13292e";
+    public string UiSplitter { get; set; } = "#2e6773";
+
     /// <summary>Dimmed secondary text (comments, de-emphasized output).</summary>
     public string TextMuted { get; set; } = "#888888";
 

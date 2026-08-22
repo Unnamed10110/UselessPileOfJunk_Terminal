@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using UselessTerminal.Services;
 
@@ -26,7 +27,13 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     private readonly Queue<string> _webWriteQueue = new();
     private bool _webWritePumpRunning;
     private bool _disposed;
-    private (string Command, string? WorkingDirectory, short Cols, short Rows)? _pendingSessionStart;
+    private (string Command, string? WorkingDirectory, short Cols, short Rows, string? StartingCommand)? _pendingSessionStart;
+    private string? _startingCommand;
+    private string? _sshMuxControlPath;
+    private string? _cwdHost;
+    private bool _cwdFromOsc7;
+    private DispatcherTimer? _dropStatusTimer;
+    private bool _dropCopyInProgress;
     private short _lastKnownCols = 120;
     private short _lastKnownRows = 30;
     private bool _hasReceivedResize;
@@ -51,6 +58,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public TerminalControl()
     {
         InitializeComponent();
+        WebView.AllowExternalDrop = true;
         Loaded += TerminalControl_Loaded;
         GotFocus += (_, _) => PaneFocused?.Invoke(this);
         IsKeyboardFocusWithinChanged += (_, e) =>
@@ -93,8 +101,9 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     public void SetFocusIndicator(bool focused)
     {
         FocusBorder.BorderBrush = focused
-            ? new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(180, 255, 43, 123))
+            ? TryFindResource("Ui.Accent") as System.Windows.Media.Brush
+              ?? new System.Windows.Media.SolidColorBrush(
+                  System.Windows.Media.Color.FromArgb(180, 107, 229, 255))
             : System.Windows.Media.Brushes.Transparent;
         DimOverlay.Visibility = focused
             ? System.Windows.Visibility.Collapsed
@@ -109,7 +118,9 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await WebView.EnsureCoreWebView2Async(env);
-        WebView.DefaultBackgroundColor = System.Drawing.Color.Black;
+        WebView.AllowExternalDrop = true;
+        WebView.DefaultBackgroundColor = HexToDrawing(SettingsStore.Instance.Current.TerminalBackground);
+        WebView.ZoomFactor = 1.0;
 
         var settings = WebView.CoreWebView2.Settings;
         settings.AreDefaultContextMenusEnabled = false;
@@ -120,6 +131,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 #endif
         settings.IsStatusBarEnabled = false;
         settings.IsZoomControlEnabled = false;
+        settings.IsPinchZoomEnabled = false;
         settings.IsGeneralAutofillEnabled = false;
         settings.IsPasswordAutosaveEnabled = false;
 
@@ -221,6 +233,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
 
                 case "title":
                     TitleChanged?.Invoke(msg.data ?? "Terminal");
+                    MaybeUpdateCwdFromSshTitle(msg.data);
                     break;
 
                 case "fontSize":
@@ -249,6 +262,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                     if (!string.IsNullOrWhiteSpace(msg.data))
                     {
                         CurrentWorkingDirectory = msg.data;
+                        _cwdHost = msg.host;
+                        _cwdFromOsc7 = true;
                         CwdChanged?.Invoke(msg.data);
                     }
                     break;
@@ -267,19 +282,60 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                     if (!string.IsNullOrWhiteSpace(msg.data))
                         SearchAllTabsRequested?.Invoke(msg.data);
                     break;
+
+                case "fileDragOver":
+                    ShowFileDropOverlay(true, ResolveDropDestination()?.Display);
+                    break;
+
+                case "fileDragLeave":
+                    if (!_dropCopyInProgress)
+                        HideDropStatus();
+                    break;
+
+                case "fileDrop":
+                    string[] dropped = ExtractDroppedFilePaths(args);
+                    if (dropped.Length == 0)
+                    {
+                        if (!_dropCopyInProgress)
+                            HideDropStatus();
+                        break;
+                    }
+                    CopyDroppedFiles(dropped);
+                    break;
             }
         }
         catch { }
+    }
+
+    private static string[] ExtractDroppedFilePaths(CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        var list = new List<string>();
+        try
+        {
+            if (args.AdditionalObjects is null) return [];
+            foreach (object? item in args.AdditionalObjects)
+            {
+                if (item is CoreWebView2File file && !string.IsNullOrWhiteSpace(file.Path))
+                    list.Add(file.Path);
+            }
+        }
+        catch { }
+
+        return list.ToArray();
     }
 
     public Dictionary<string, string>? ExtraEnvironment { get; set; }
 
     private string? _shellCommand;
 
-    public void StartSession(string command, string? workingDirectory = null, short cols = 120, short rows = 30)
+    public void StartSession(string command, string? workingDirectory = null, short cols = 120, short rows = 30, string? startingCommand = null)
     {
         _session?.Dispose();
         _session = null;
+        _startingCommand = string.IsNullOrWhiteSpace(startingCommand) ? null : startingCommand.Trim();
+        _sshMuxControlPath = null;
+        _cwdHost = null;
+        _cwdFromOsc7 = false;
 
         // First-tab race fix:
         // if ConPTY starts before WebView has reported its real size, the shell paints with
@@ -287,7 +343,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         // in some prompt UIs (PSReadLine list/history, clear). Start only once ready+resized.
         if (!_webViewReady || !_hasReceivedResize)
         {
-            _pendingSessionStart = (command, workingDirectory, cols, rows);
+            _pendingSessionStart = (command, workingDirectory, cols, rows, _startingCommand);
             _shellCommand = command;
             CurrentWorkingDirectory = workingDirectory;
             return;
@@ -302,6 +358,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         if (_pendingSessionStart is null) return;
         var pending = _pendingSessionStart.Value;
         _pendingSessionStart = null;
+        _startingCommand = pending.StartingCommand;
         StartSessionInternal(
             pending.Command,
             pending.WorkingDirectory,
@@ -317,7 +374,10 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         // For PowerShell we inject our shell-integration script via -EncodedCommand at
         // launch time. This is far more reliable than writing to stdin afterwards: it
         // can't race with PSReadLine, the user's profile, or oh-my-posh.
-        string launchCommand = MaybeInjectPowerShellArgs(command);
+        string launchCommand = MaybeInjectPowerShellArgs(command, _startingCommand, out bool startCmdBaked);
+        if (startCmdBaked)
+            _startingCommand = null;
+        launchCommand = SshConnection.InjectControlMaster(launchCommand, out _sshMuxControlPath);
 
         _session = new ConPtySession();
         _session.OutputReceived += OnOutputReceived;
@@ -326,6 +386,7 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         _shellCommand = command;
         CurrentWorkingDirectory = workingDirectory;
         InjectShellIntegrationAsync();
+        ScheduleStartingCommandViaStdin();
     }
 
     /// <summary>
@@ -348,11 +409,22 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         {
             // Use cmd's $e for ESC; emit OSC 7 then the standard prompt; clear screen.
             init = "prompt $e]7;file:///$P$e\\$P$G & cls\r\n";
+            if (!string.IsNullOrWhiteSpace(_startingCommand))
+            {
+                init += ToConPtyInput(_startingCommand);
+                _startingCommand = null;
+            }
         }
         else if (lower.Contains("bash") || lower.Contains("\\sh.exe") || lower.EndsWith("/sh") || lower.EndsWith("/zsh") || lower.Contains("zsh"))
         {
             // Convert backslashes to forward slashes for file:// URL.
-            init = "PROMPT_COMMAND='printf \"\\033]7;file://%s\\007\" \"${PWD//\\\\//}\"'\nclear\n";
+            init = "PROMPT_COMMAND='printf \"\\033]7;file://%s\\007\" \"${PWD//\\\\//}\"'\nprintf '\\033[?2004h'\nclear\n";
+            if (!string.IsNullOrWhiteSpace(_startingCommand))
+            {
+                init += _startingCommand.Replace("\r\n", "\n").Replace('\r', '\n');
+                if (!init.EndsWith('\n')) init += "\n";
+                _startingCommand = null;
+            }
         }
 
         if (init is null) return;
@@ -376,8 +448,9 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     /// with PSReadLine, no echo-back of injected text, and oh-my-posh / starship can't
     /// clobber the prompt because we wrap it AFTER they install theirs.
     /// </summary>
-    private static string MaybeInjectPowerShellArgs(string command)
+    private static string MaybeInjectPowerShellArgs(string command, string? startingCommand, out bool startingCommandBaked)
     {
+        startingCommandBaked = false;
         if (string.IsNullOrWhiteSpace(command)) return command;
         string trimmed = command.Trim();
 
@@ -419,7 +492,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         }
 
         // PowerShell expects -EncodedCommand to be UTF-16LE base64.
-        string b64 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(BuildPowerShellInitScript()));
+        string b64 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(BuildPowerShellInitScript(startingCommand)));
+        startingCommandBaked = !string.IsNullOrWhiteSpace(startingCommand);
 
         string injected = string.IsNullOrEmpty(args)
             ? $"-NoExit -EncodedCommand {b64}"
@@ -428,17 +502,18 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         return $"\"{exe}\" {injected}";
     }
 
-    private static string BuildPowerShellInitScript()
+    private static string BuildPowerShellInitScript(string? startingCommand = null)
     {
         // Compatible with both Windows PowerShell 5.1 and PowerShell 7+ (uses [char]27/7
         // instead of `e). The OSC 7 escape is *prepended to the prompt return value* so
         // the host writes one combined string — no race with [Console]::Write timing,
         // no reliance on Write-Host. We also re-detect on every prompt so a profile
         // that re-assigns $function:prompt later is wrapped automatically next time.
-        return @"
+        string baseScript = @"
 $ErrorActionPreference = 'SilentlyContinue'
 $global:__utE = [string][char]27
 $global:__utB = [string][char]7
+function global:__utApplyInputColor { }
 
 function global:__utWrap {
     $cur = (Get-Item Function:prompt -ErrorAction SilentlyContinue).ScriptBlock
@@ -446,6 +521,7 @@ function global:__utWrap {
     if ($cur) { $global:__utOrigPrompt = $cur }
     function global:prompt {
         # __utEmitCwdMarker
+        try { __utApplyInputColor } catch {}
         $p = $PWD.Path -replace '\\','/'
         $osc = $global:__utE + ']7;file:///' + $p + $global:__utB
         $orig = ''
@@ -464,14 +540,120 @@ __utWrap
 # $function:prompt after we ran (oh-my-posh / starship / Import-Module posh-git etc.).
 if (-not $global:__utOnIdleRegistered) {
     try {
-        $null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action { __utWrap }
+        $null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action {
+            __utWrap
+            try { __utApplyInputColor } catch {}
+        }
         $global:__utOnIdleRegistered = $true
     } catch {}
 }
 
 # Emit the initial cwd so the status bar populates without waiting for a prompt fire.
 [Console]::Write($global:__utE + ']7;file:///' + ($PWD.Path -replace '\\','/') + $global:__utB)
+
+# Bracketed paste: multiline clipboard inserts at the prompt instead of running each line.
+[Console]::Write($global:__utE + '[?2004h')
 ";
+        return baseScript + BuildPsReadLineInputColorScript() + BuildPowerShellStartingCommandScript(startingCommand);
+    }
+
+    private static string BuildPowerShellStartingCommandScript(string? startingCommand)
+    {
+        if (string.IsNullOrWhiteSpace(startingCommand)) return "";
+        string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(startingCommand.Trim()));
+        return $@"
+# Session starting command (after profile + shell integration).
+try {{
+  $__utStart = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{b64}'))
+  if ($__utStart) {{ Invoke-Expression $__utStart }}
+}} catch {{}}
+";
+    }
+
+    private void ScheduleStartingCommandViaStdin()
+    {
+        if (string.IsNullOrWhiteSpace(_startingCommand)) return;
+        string cmd = _startingCommand;
+        _startingCommand = null;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    await Task.Delay(200).ConfigureAwait(false);
+                    if (_disposed) return;
+                    if (_session is { IsProcessAlive: true })
+                    {
+                        await Task.Delay(600).ConfigureAwait(false);
+                        if (_disposed || _session is null) return;
+                        _session.WriteInput(ToConPtyInput(cmd));
+                        return;
+                    }
+                }
+            }
+            catch { }
+        });
+    }
+
+    private static string ToConPtyInput(string command)
+    {
+        string normalized = command.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+        if (normalized.Length == 0) return "\r";
+        return normalized.Replace('\n', '\r') + "\r";
+    }
+
+    private static string BuildPsReadLineInputColorScript()
+    {
+        var (r, g, b) = ParseRgb(SettingsStore.Instance.Current.ColorInput);
+        // PSReadLine is not imported yet during -EncodedCommand; apply from prompt/OnIdle
+        // with 24-bit VT (works on PSReadLine 2.x; "#RRGGBB" does not on older builds).
+        return $@"
+function global:__utApplyInputColor {{
+  if ($global:__utInputColorApplied) {{ return }}
+  try {{
+    Import-Module PSReadLine -ErrorAction Stop
+    $vt = $global:__utE + '[38;2;{r};{g};{b}m'
+    Set-PSReadLineOption -ErrorAction Stop -Colors @{{
+      Command = $vt
+      Default = $vt
+      Number = $vt
+      Parameter = $vt
+      Operator = $vt
+      Member = $vt
+      Variable = $vt
+      Keyword = $vt
+      Type = $vt
+      String = $vt
+    }}
+    $global:__utInputColorApplied = $true
+  }} catch {{}}
+}}
+";
+    }
+
+    private static (int r, int g, int b) ParseRgb(string? hex)
+    {
+        string h = SanitizeCssHex(hex).TrimStart('#');
+        return (Convert.ToByte(h[..2], 16), Convert.ToByte(h[2..4], 16), Convert.ToByte(h[4..6], 16));
+    }
+
+    private static string SanitizeCssHex(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return "#ffffff";
+        hex = hex.Trim();
+        if (hex.Length == 4 && hex[0] == '#')
+            hex = $"#{hex[1]}{hex[1]}{hex[2]}{hex[2]}{hex[3]}{hex[3]}";
+        if (hex.Length == 7 && hex[0] == '#')
+        {
+            for (int i = 1; i < 7; i++)
+            {
+                if (!Uri.IsHexDigit(hex[i])) return "#ffffff";
+            }
+            return hex;
+        }
+        return "#ffffff";
     }
 
     private void OnOutputReceived(byte[] data)
@@ -581,6 +763,7 @@ if (-not $global:__utOnIdleRegistered) {
             catch { }
         }
 
+        WebView.DefaultBackgroundColor = HexToDrawing(settings.TerminalBackground);
         string themeJson = settings.ToThemeJson();
         var themeEl = JsonSerializer.Deserialize<JsonElement>(themeJson);
 
@@ -610,6 +793,7 @@ if (-not $global:__utOnIdleRegistered) {
             ["backgroundImageDataUrl"] = dataUrl ?? "",
             ["backgroundImageOpacity"] = settings.ShellBackgroundImageOpacity,
             ["useBackgroundImage"] = !string.IsNullOrEmpty(dataUrl),
+            ["colorInput"] = settings.ColorInput,
         };
 
         string innerJson = JsonSerializer.Serialize(payload);
@@ -638,6 +822,25 @@ if (-not $global:__utOnIdleRegistered) {
             ".bmp" => "image/bmp",
             _ => "image/png",
         };
+    }
+
+    private static System.Drawing.Color HexToDrawing(string? hex)
+    {
+        try
+        {
+            string h = (hex ?? "#000000").Trim().TrimStart('#');
+            if (h.Length == 3)
+                h = $"{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}";
+            if (h.Length != 6) return System.Drawing.Color.Black;
+            return System.Drawing.Color.FromArgb(
+                Convert.ToInt32(h[..2], 16),
+                Convert.ToInt32(h[2..4], 16),
+                Convert.ToInt32(h[4..6], 16));
+        }
+        catch
+        {
+            return System.Drawing.Color.Black;
+        }
     }
 
     public void SendCommand(string command)
@@ -733,9 +936,241 @@ if (-not $global:__utOnIdleRegistered) {
     {
         if (_disposed) return;
         _disposed = true;
+        _dropStatusTimer?.Stop();
+        _dropCopyInProgress = false;
         _session?.Dispose();
         _session = null;
     }
 
-    private record TerminalMessage(string type, string? data, int cols, int rows, int? fontSize);
+    private void Terminal_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+        string? dest = ResolveDropDestination()?.Display;
+        e.Effects = dest is null ? DragDropEffects.None : DragDropEffects.Copy;
+        e.Handled = true;
+        ShowFileDropOverlay(dest is not null, dest);
+    }
+
+    private void Terminal_PreviewDragLeave(object sender, DragEventArgs e)
+    {
+        if (_dropCopyInProgress) return;
+        HideDropStatus();
+    }
+
+    private void Terminal_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0)
+        {
+            HideDropStatus();
+            return;
+        }
+        CopyDroppedFiles(paths);
+    }
+
+    private void ShowFileDropOverlay(bool show, string? destDir)
+    {
+        if (_dropCopyInProgress) return;
+        if (!show)
+        {
+            HideDropStatus();
+            return;
+        }
+        ShowDropStatus(
+            "Drop to copy",
+            string.IsNullOrEmpty(destDir) ? "Release to copy into this folder" : destDir,
+            "Ui.Accent");
+    }
+
+    private void HideDropStatus()
+    {
+        _dropStatusTimer?.Stop();
+        if (FileDropOverlay is not null)
+            FileDropOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowDropStatus(string title, string detail, string brushKey, int autoHideMs = 0)
+    {
+        if (FileDropOverlay is null) return;
+        FileDropTitle.Text = title;
+        FileDropLabel.Text = detail;
+        var brush = TryFindResource(brushKey) as Brush ?? Brushes.White;
+        FileDropTitle.Foreground = brush;
+        FileDropCard.BorderBrush = brush;
+        FileDropOverlay.Visibility = Visibility.Visible;
+
+        _dropStatusTimer?.Stop();
+        if (autoHideMs <= 0) return;
+        _dropStatusTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(autoHideMs) };
+        _dropStatusTimer.Interval = TimeSpan.FromMilliseconds(autoHideMs);
+        _dropStatusTimer.Tick -= DropStatusTimer_Tick;
+        _dropStatusTimer.Tick += DropStatusTimer_Tick;
+        _dropStatusTimer.Start();
+    }
+
+    private void DropStatusTimer_Tick(object? sender, EventArgs e)
+    {
+        _dropStatusTimer?.Stop();
+        if (!_dropCopyInProgress)
+            HideDropStatus();
+    }
+
+    private void CopyDroppedFiles(string[] paths)
+    {
+        var dest = ResolveDropDestination();
+        if (dest is null)
+        {
+            ShowDropStatus("Cannot copy", "The current shell directory is not available yet.", "Ui.Error", 4000);
+            return;
+        }
+
+        _dropCopyInProgress = true;
+        string firstName = Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        ShowDropStatus(
+            "Checking…",
+            paths.Length == 1 ? $"{firstName}\n→ {dest.Display}" : $"{paths.Length} items → {dest.Display}",
+            "Ui.Accent");
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+            List<string> conflicts;
+            try
+            {
+                conflicts = dest.Ssh is not null
+                    ? SshFileDrop.FindNameConflicts(paths, dest.Ssh, dest.Path)
+                    : ShellFileDrop.FindNameConflicts(paths, dest.Path);
+            }
+            catch
+            {
+                conflicts = [];
+            }
+
+            FileConflictChoice choice = FileConflictChoice.Rename;
+            if (conflicts.Count > 0)
+            {
+                choice = Dispatcher.Invoke(() =>
+                {
+                    _dropCopyInProgress = false;
+                    HideDropStatus();
+                    var picked = FileConflictDialog.Ask(Window.GetWindow(this), conflicts, dest.Display);
+                    if (picked != FileConflictChoice.Cancel)
+                        _dropCopyInProgress = true;
+                    return picked;
+                });
+                if (choice == FileConflictChoice.Cancel)
+                    return;
+            }
+
+            Dispatcher.Invoke(() =>
+            {
+                if (_dropCopyInProgress)
+                {
+                    ShowDropStatus(
+                        paths.Length == 1 ? "Copying…" : $"Copying {paths.Length} items…",
+                        paths.Length == 1 ? $"{firstName}\n→ {dest.Display}" : $"into {dest.Display}",
+                        "Ui.Accent");
+                }
+            });
+
+            void Report(string status)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (_dropCopyInProgress)
+                        ShowDropStatus("Copying…", $"{status}\n→ {dest.Display}", "Ui.Accent");
+                });
+            }
+
+            ShellFileDrop.CopyResult result = dest.Ssh is not null
+                ? SshFileDrop.CopyDroppedPaths(paths, dest.Ssh, dest.Path, choice, Report)
+                : ShellFileDrop.CopyDroppedPaths(paths, dest.Path, choice, Report);
+
+            Dispatcher.Invoke(() =>
+            {
+                _dropCopyInProgress = false;
+                string names = result.CopiedNames.Count == 0
+                    ? ""
+                    : result.CopiedNames.Count <= 4
+                        ? string.Join("\n", result.CopiedNames)
+                        : string.Join("\n", result.CopiedNames.Take(3)) + $"\n… and {result.CopiedNames.Count - 3} more";
+
+                if (result.HasCopied && !result.HasErrors)
+                {
+                    string title = result.Copied == 1 ? "Copied" : $"Copied {result.Copied} items";
+                    ShowDropStatus(title, string.IsNullOrEmpty(names) ? dest.Display : $"{names}\n→ {dest.Display}", "Ui.Success", 3200);
+                }
+                else if (result.HasCopied && result.HasErrors)
+                {
+                    ShowDropStatus(
+                        $"Copied {result.Copied}, {result.Errors.Count} failed",
+                        string.Join("\n", result.Errors.Take(4)),
+                        "Ui.Warning",
+                        5000);
+                }
+                else
+                {
+                    ShowDropStatus(
+                        "Copy failed",
+                        result.Errors.Count > 0 ? string.Join("\n", result.Errors.Take(4)) : "Nothing was copied.",
+                        "Ui.Error",
+                        5000);
+                }
+            });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _dropCopyInProgress = false;
+                    ShowDropStatus("Copy failed", ex.Message, "Ui.Error", 5000);
+                });
+            }
+        });
+    }
+
+    private sealed record DropDestination(string Path, string Display, SshConnection? Ssh);
+
+    private DropDestination? ResolveDropDestination()
+    {
+        var ssh = SshConnection.Resolve(_shellCommand, SessionProcessId, _sshMuxControlPath, _cwdHost);
+        if (ssh is not null)
+        {
+            string remoteDir = IsUsableRemoteCwd(CurrentWorkingDirectory, _cwdHost)
+                ? CurrentWorkingDirectory!
+                : "~";
+            return new DropDestination(remoteDir, SshFileDrop.FormatDestination(ssh, remoteDir), ssh);
+        }
+
+        string? local = ShellFileDrop.ResolveDestinationDirectory(CurrentWorkingDirectory, null);
+        return local is null ? null : new DropDestination(local, local, null);
+    }
+
+    private static bool IsUsableRemoteCwd(string? cwd, string? oscHost)
+    {
+        if (string.IsNullOrWhiteSpace(cwd)) return false;
+        if (!SshConnection.IsLocalHostName(oscHost)) return true;
+        if (cwd.StartsWith('~')) return true;
+        if (cwd.StartsWith('/'))
+            return ShellFileDrop.TryResolveExistingDirectory(cwd) is null;
+        return false;
+    }
+
+    private void MaybeUpdateCwdFromSshTitle(string? title)
+    {
+        if (_cwdFromOsc7) return;
+        if (!SshFileDrop.TryParseTitleCwd(title, out string path)) return;
+        if (!SshConnection.LooksLikeSsh(_shellCommand)
+            && SshConnection.Resolve(_shellCommand, SessionProcessId, _sshMuxControlPath, _cwdHost) is null)
+            return;
+        CurrentWorkingDirectory = path;
+        CwdChanged?.Invoke(path);
+    }
+
+    private record TerminalMessage(string type, string? data, int cols, int rows, int? fontSize, string? host);
 }

@@ -6,8 +6,12 @@
     Width="460" SizeToContent="Height"
     WindowStartupLocation="CenterOwner"
     ResizeMode="NoResize"
-    Background="#000000"
-    Foreground="#ffffff">
+    Background="{DynamicResource Ui.ChromeBackground}"
+    Foreground="{DynamicResource Ui.Foreground}"
+    UseLayoutRounding="True"
+    TextOptions.TextFormattingMode="Display"
+    TextOptions.TextRenderingMode="ClearType"
+    TextOptions.TextHintingMode="Fixed">
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
@@ -24,91 +28,91 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="Name" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Name" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <TextBox x:Name="NameBox" FontSize="13" Padding="8,6"
-                     Background="#000000" Foreground="#ffffff"
-                     BorderBrush="#555555" BorderThickness="1" />
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                     BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,0,0,12">
-            <TextBlock Text="Description" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Description" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <TextBox x:Name="DescriptionBox" FontSize="13" Padding="8,6"
                      MinHeight="64" MaxHeight="140" AcceptsReturn="True"
                      TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                     Background="#000000" Foreground="#ffffff"
-                     BorderBrush="#555555" BorderThickness="1" />
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                     BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             <TextBlock Text="Shown as tooltip when hovering the session in the list."
-                       FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
+                       FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,3,0,0" />
         </StackPanel>
 
         <StackPanel Grid.Row="2" Margin="0,0,0,12">
-            <TextBlock Text="Preset shell" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Preset shell" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <ComboBox x:Name="PresetShellCombo"
                       SelectionChanged="PresetShellCombo_SelectionChanged"
-                      Background="#000000" Foreground="#ffffff"
-                      BorderBrush="#555555" BorderThickness="1"
+                      Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                      BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1"
                       Padding="6,4" FontSize="13"
                       MaxDropDownHeight="240" />
             <TextBlock Text="Pick a detected shell to fill path, arguments, and color; use Custom to edit manually."
-                       FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
+                       FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,3,0,0" />
         </StackPanel>
 
         <StackPanel Grid.Row="3" Margin="0,0,0,12">
-            <TextBlock Text="Shell Path" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Shell Path" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseShell_Click"
                         Margin="6,0,0,0" Padding="10,6"
-                        Background="#000000" Foreground="#ffffff"
-                        BorderBrush="#555555" BorderThickness="1" />
+                        Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                        BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
                 <TextBox x:Name="ShellPathBox" FontSize="13" Padding="8,6"
-                         Background="#000000" Foreground="#ffffff"
-                         BorderBrush="#555555" BorderThickness="1" />
+                         Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                         BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             </DockPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="4" Margin="0,0,0,12">
-            <TextBlock Text="Arguments" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Arguments" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <TextBox x:Name="ArgumentsBox" FontSize="13" Padding="8,6"
-                     Background="#000000" Foreground="#ffffff"
-                     BorderBrush="#555555" BorderThickness="1" />
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                     BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
         </StackPanel>
 
         <StackPanel Grid.Row="5" Margin="0,0,0,12">
-            <TextBlock Text="Working Directory" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Working Directory" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Browse..." Click="BrowseDir_Click"
                         Margin="6,0,0,0" Padding="10,6"
-                        Background="#000000" Foreground="#ffffff"
-                        BorderBrush="#555555" BorderThickness="1" />
+                        Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                        BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
                 <TextBox x:Name="WorkDirBox" FontSize="13" Padding="8,6"
-                         Background="#000000" Foreground="#ffffff"
-                         BorderBrush="#555555" BorderThickness="1" />
+                         Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                         BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             </DockPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="6" Margin="0,0,0,12">
-            <TextBlock Text="Starting Command" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Starting Command" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <TextBox x:Name="StartingCommandBox" FontSize="13" Padding="8,6"
-                     Background="#000000" Foreground="#ffffff"
-                     BorderBrush="#555555" BorderThickness="1" />
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                     BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             <TextBlock Text="Runs after shell starts (e.g. ssh user@host, cd /project)" 
-                       FontSize="10" Foreground="#555555" Margin="0,3,0,0" />
+                       FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,3,0,0" />
         </StackPanel>
 
         <StackPanel Grid.Row="7" Margin="0,0,0,12">
-            <TextBlock Text="Theme Override (optional)" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Theme Override (optional)" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <DockPanel Margin="0,0,0,6">
-                <TextBlock Text="Background" Width="80" Foreground="#666" VerticalAlignment="Center" FontSize="11" />
+                <TextBlock Text="Background" Width="80" Foreground="{DynamicResource Ui.ForegroundMuted}" VerticalAlignment="Center" FontSize="11" />
                 <TextBox x:Name="ThemeBgBox" Width="90" FontSize="12" Padding="6,4"
-                         Background="#000000" Foreground="#ffffff"
-                         BorderBrush="#555555" BorderThickness="1" />
-                <TextBlock Text="   Font size" Foreground="#666" VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0" />
+                         Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                         BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
+                <TextBlock Text="   Font size" Foreground="{DynamicResource Ui.ForegroundMuted}" VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0" />
                 <TextBox x:Name="ThemeFontSizeBox" Width="50" FontSize="12" Padding="6,4"
-                         Background="#000000" Foreground="#ffffff"
-                         BorderBrush="#555555" BorderThickness="1" Margin="6,0,0,0" />
-                <TextBlock Text="(0 = global)" Foreground="#444" VerticalAlignment="Center" FontSize="10" Margin="6,0,0,0" />
+                         Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                         BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Margin="6,0,0,0" />
+                <TextBlock Text="(0 = global)" Foreground="{DynamicResource Ui.ForegroundMuted}" VerticalAlignment="Center" FontSize="10" Margin="6,0,0,0" />
             </DockPanel>
-            <TextBlock Text="Color Tag" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Color Tag" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <WrapPanel>
                 <RadioButton x:Name="ColorBlue" Tag="#00ff44" Margin="0,0,6,0"
                              Click="Color_Click" IsChecked="True">
@@ -133,21 +137,21 @@
         </StackPanel>
 
         <StackPanel Grid.Row="8" Margin="0,0,0,12">
-            <TextBlock Text="Environment Variables (KEY=VALUE, one per line)" FontSize="12" Foreground="#888888" Margin="0,0,0,4" />
+            <TextBlock Text="Environment Variables (KEY=VALUE, one per line)" FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="0,0,0,4" />
             <TextBox x:Name="EnvVarsBox" FontSize="12" Padding="8,6"
                      MinHeight="50" MaxHeight="100" AcceptsReturn="True"
                      TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                     Background="#000000" Foreground="#ffffff"
-                     BorderBrush="#555555" BorderThickness="1" />
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                     BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
         </StackPanel>
 
         <!-- Buttons -->
         <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Click="Cancel_Click" Padding="16,8"
-                    Margin="0,0,8,0" Background="#000000" Foreground="#ffffff"
-                    BorderBrush="#555555" BorderThickness="1" />
+                    Margin="0,0,8,0" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                    BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
             <Button Content="Save" Click="Save_Click" Padding="16,8"
-                    Background="#ffffff" Foreground="#000000"
+                    Background="{DynamicResource Ui.TabSelectedBackground}" Foreground="{DynamicResource Ui.TabSelectedForeground}"
                     BorderThickness="0" FontWeight="Bold" />
         </StackPanel>
     </Grid>
