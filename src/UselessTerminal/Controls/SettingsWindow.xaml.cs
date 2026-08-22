@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -19,6 +20,7 @@ public partial class SettingsWindow : Window
     [
         ("Terminal background", nameof(AppSettings.TerminalBackground)),
         ("Default text & prompt", nameof(AppSettings.TextDefault)),
+        ("Typed input", nameof(AppSettings.ColorInput)),
         ("Muted / secondary", nameof(AppSettings.TextMuted)),
         ("Errors", nameof(AppSettings.ColorError)),
         ("Warnings", nameof(AppSettings.ColorWarning)),
@@ -29,6 +31,30 @@ public partial class SettingsWindow : Window
         ("Cursor", nameof(AppSettings.CursorColor)),
         ("Selection BG", nameof(AppSettings.SelectionBackground)),
         ("Selection FG", nameof(AppSettings.SelectionForeground)),
+    ];
+
+    private static readonly (string Label, string Property)[] UiColorEntries =
+    [
+        ("UI text", nameof(AppSettings.UiForeground)),
+        ("UI muted text", nameof(AppSettings.UiForegroundMuted)),
+        ("UI accent", nameof(AppSettings.UiAccent)),
+        ("UI highlight", nameof(AppSettings.UiHighlight)),
+        ("UI success", nameof(AppSettings.UiSuccess)),
+        ("UI warning", nameof(AppSettings.UiWarning)),
+        ("UI error", nameof(AppSettings.UiError)),
+        ("Chrome background", nameof(AppSettings.UiChromeBackground)),
+        ("Folder / card fill", nameof(AppSettings.UiCardBackground)),
+        ("Card border", nameof(AppSettings.UiCardBorder)),
+        ("Folder selected", nameof(AppSettings.UiFolderSelectedBackground)),
+        ("Tab text", nameof(AppSettings.UiTabForeground)),
+        ("Selected tab fill", nameof(AppSettings.UiTabSelectedBackground)),
+        ("Selected tab text", nameof(AppSettings.UiTabSelectedForeground)),
+        ("Status bar", nameof(AppSettings.UiStatusBackground)),
+        ("Icons", nameof(AppSettings.UiIcon)),
+        ("Input fill", nameof(AppSettings.UiInputBackground)),
+        ("Input text", nameof(AppSettings.UiInputForeground)),
+        ("Hover fill", nameof(AppSettings.UiHoverBackground)),
+        ("Splitters", nameof(AppSettings.UiSplitter)),
     ];
 
     public SettingsWindow(AppSettings settings)
@@ -45,12 +71,37 @@ public partial class SettingsWindow : Window
             FontFamilyBox.Items.Add(ff.Source);
         FontFamilyBox.Text = _settings.FontFamily;
 
+        UiFontFamilyBox.Items.Clear();
+        foreach (var ff in Fonts.SystemFontFamilies.OrderBy(f => f.Source))
+            UiFontFamilyBox.Items.Add(ff.Source);
+        UiFontFamilyBox.Text = _settings.UiFontFamily;
+
         FontSizeSlider.Value = _settings.FontSize;
         FontSizeLabel.Text = _settings.FontSize.ToString();
 
         int fw = Math.Clamp(_settings.FontWeight, 300, 700);
         FontWeightSlider.Value = fw;
         FontWeightLabel.Text = fw.ToString();
+
+        double ui = SettingsStore.SnapUiScale(_settings.UiScale);
+        UiScaleSlider.Value = ui * 100;
+        UiScaleLabel.Text = $"{(int)Math.Round(ui * 100)}%";
+
+        int ufs = Math.Clamp(_settings.UiFontSize, 10, 22);
+        UiFontSizeSlider.Value = ufs;
+        UiFontSizeLabel.Text = ufs.ToString();
+
+        int ufw = Math.Clamp(_settings.UiFontWeight, 300, 700);
+        UiFontWeightSlider.Value = ufw;
+        UiFontWeightLabel.Text = ufw.ToString();
+
+        foreach (ComboBoxItem item in UiSharpnessBox.Items)
+        {
+            if ((string)item.Content == _settings.UiSharpness)
+            { UiSharpnessBox.SelectedItem = item; break; }
+        }
+        if (UiSharpnessBox.SelectedItem is null)
+            UiSharpnessBox.SelectedIndex = 0;
 
         foreach (ComboBoxItem item in CursorStyleBox.Items)
         {
@@ -77,7 +128,8 @@ public partial class SettingsWindow : Window
             ThemePresetBox.Items.Add(name);
         ThemePresetBox.SelectedIndex = 0;
 
-        BuildColorGrid();
+        BuildColorGrid(ColorGrid, ColorEntries);
+        BuildColorGrid(UiColorGrid, UiColorEntries);
     }
 
     private void ShellBgOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -101,23 +153,27 @@ public partial class SettingsWindow : Window
         ShellBgPathBox.Text = "";
     }
 
-    private void BuildColorGrid()
+    private void BuildColorGrid(UniformGrid grid, (string Label, string Property)[] entries)
     {
-        ColorGrid.Children.Clear();
+        grid.Children.Clear();
         var prop = typeof(AppSettings);
 
-        foreach (var (label, propName) in ColorEntries)
+        foreach (var (label, propName) in entries)
         {
             var info = prop.GetProperty(propName)!;
             string colorVal = (string)info.GetValue(_settings)!;
 
             var panel = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var fg = TryFindResource("Ui.Foreground") as Brush ?? new SolidColorBrush(Colors.White);
+            var inputBg = TryFindResource("Ui.InputBackground") as Brush ?? new SolidColorBrush(Colors.Black);
+            var inputFg = TryFindResource("Ui.InputForeground") as Brush ?? new SolidColorBrush(Colors.White);
+            var border = TryFindResource("Ui.CardBorder") as Brush ?? new SolidColorBrush(ParseColor("#555555"));
 
             var swatch = new Border
             {
                 Width = 24, Height = 24,
                 CornerRadius = new CornerRadius(4),
-                BorderBrush = new SolidColorBrush(ParseColor("#555555")),
+                BorderBrush = border,
                 BorderThickness = new Thickness(1),
                 Background = new SolidColorBrush(ParseColor(colorVal)),
                 Margin = new Thickness(0, 0, 8, 0),
@@ -131,9 +187,9 @@ public partial class SettingsWindow : Window
                 Text = colorVal,
                 Width = 80,
                 Padding = new Thickness(6, 4, 6, 4),
-                Background = new SolidColorBrush(Colors.Black),
-                Foreground = new SolidColorBrush(Colors.White),
-                BorderBrush = new SolidColorBrush(ParseColor("#555555")),
+                Background = inputBg,
+                Foreground = inputFg,
+                BorderBrush = border,
                 BorderThickness = new Thickness(1),
                 FontSize = 12,
                 Tag = propName,
@@ -150,7 +206,7 @@ public partial class SettingsWindow : Window
             var lbl = new TextBlock
             {
                 Text = label,
-                Foreground = new SolidColorBrush(Colors.White),
+                Foreground = fg,
                 VerticalAlignment = VerticalAlignment.Center,
                 FontSize = 12,
                 Width = 100
@@ -160,7 +216,7 @@ public partial class SettingsWindow : Window
             panel.Children.Add(swatch);
             panel.Children.Add(textBox);
 
-            ColorGrid.Children.Add(panel);
+            grid.Children.Add(panel);
         }
     }
 
@@ -229,7 +285,8 @@ public partial class SettingsWindow : Window
         if (ThemePresetBox.SelectedItem is not string name) return;
         if (name == "Custom" || !ThemePresets.All.TryGetValue(name, out var preset)) return;
         ThemePresets.ApplyTo(_settings, preset);
-        BuildColorGrid();
+        BuildColorGrid(ColorGrid, ColorEntries);
+        BuildColorGrid(UiColorGrid, UiColorEntries);
     }
 
     private void FontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -244,6 +301,24 @@ public partial class SettingsWindow : Window
             FontWeightLabel.Text = ((int)e.NewValue).ToString();
     }
 
+    private void UiScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (UiScaleLabel is not null)
+            UiScaleLabel.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void UiFontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (UiFontSizeLabel is not null)
+            UiFontSizeLabel.Text = ((int)e.NewValue).ToString();
+    }
+
+    private void UiFontWeightSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (UiFontWeightLabel is not null)
+            UiFontWeightLabel.Text = ((int)e.NewValue).ToString();
+    }
+
     private void ResetDefaults_Click(object sender, RoutedEventArgs e)
     {
         _settings = new AppSettings();
@@ -255,6 +330,11 @@ public partial class SettingsWindow : Window
         _settings.FontFamily = FontFamilyBox.Text;
         _settings.FontSize = (int)FontSizeSlider.Value;
         _settings.FontWeight = Math.Clamp((int)FontWeightSlider.Value, 300, 700);
+        _settings.UiScale = SettingsStore.SnapUiScale(UiScaleSlider.Value / 100.0);
+        _settings.UiFontFamily = string.IsNullOrWhiteSpace(UiFontFamilyBox.Text) ? "Segoe UI" : UiFontFamilyBox.Text.Trim();
+        _settings.UiFontSize = Math.Clamp((int)UiFontSizeSlider.Value, 10, 22);
+        _settings.UiFontWeight = Math.Clamp((int)UiFontWeightSlider.Value, 300, 700);
+        _settings.UiSharpness = (UiSharpnessBox.SelectedItem as ComboBoxItem)?.Content as string ?? "Sharp";
         _settings.CursorBlink = CursorBlinkBox.IsChecked == true;
         _settings.CursorStyle = (CursorStyleBox.SelectedItem as ComboBoxItem)?.Content as string ?? "bar";
         if (int.TryParse(ScrollbackBox.Text, out int sb) && sb > 0)
@@ -284,20 +364,26 @@ public partial class SettingsWindow : Window
     private void SyncColorsFromGridIntoSettings()
     {
         var type = typeof(AppSettings);
-        foreach (object? row in ColorGrid.Children)
+        SyncGrid(ColorGrid);
+        SyncGrid(UiColorGrid);
+
+        void SyncGrid(UniformGrid grid)
         {
-            if (row is not DockPanel panel) continue;
-            foreach (object? child in panel.Children)
+            foreach (object? row in grid.Children)
             {
-                if (child is not TextBox tb || tb.Tag is not string propName) continue;
-                string val = tb.Text.Trim();
-                if (!val.StartsWith('#') || (val.Length != 7 && val.Length != 4)) continue;
-                try
+                if (row is not DockPanel panel) continue;
+                foreach (object? child in panel.Children)
                 {
-                    _ = ParseColor(val);
-                    type.GetProperty(propName)?.SetValue(_settings, val);
+                    if (child is not TextBox tb || tb.Tag is not string propName) continue;
+                    string val = tb.Text.Trim();
+                    if (!val.StartsWith('#') || (val.Length != 7 && val.Length != 4)) continue;
+                    try
+                    {
+                        _ = ParseColor(val);
+                        type.GetProperty(propName)?.SetValue(_settings, val);
+                    }
+                    catch { /* skip invalid */ }
                 }
-                catch { /* skip invalid */ }
             }
         }
     }

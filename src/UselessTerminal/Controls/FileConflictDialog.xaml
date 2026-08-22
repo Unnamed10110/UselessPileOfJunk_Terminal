@@ -1,0 +1,52 @@
+<Window
+    x:Class="UselessTerminal.Controls.FileConflictDialog"
+    x:ClassModifier="internal"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="File already exists"
+    Width="440" SizeToContent="Height"
+    WindowStartupLocation="CenterOwner"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    Background="{DynamicResource Ui.ChromeBackground}"
+    Foreground="{DynamicResource Ui.Foreground}">
+
+    <StackPanel Margin="20">
+        <TextBlock x:Name="Headline" FontSize="15" FontWeight="Bold"
+                   Foreground="{DynamicResource Ui.Warning}"
+                   TextWrapping="Wrap"
+                   Text="A file with this name already exists." />
+        <TextBlock x:Name="DestinationLabel" Margin="0,8,0,0"
+                   FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}"
+                   TextWrapping="Wrap" />
+        <Border Margin="0,12,0,0" Padding="10,8"
+                Background="{DynamicResource Ui.CardBackground}"
+                BorderBrush="{DynamicResource Ui.CardBorder}"
+                BorderThickness="1">
+            <TextBlock x:Name="NamesLabel" FontSize="13"
+                       Foreground="{DynamicResource Ui.Foreground}"
+                       TextWrapping="Wrap" />
+        </Border>
+        <TextBlock x:Name="RenameHint" Margin="0,12,0,0"
+                   FontSize="12" Foreground="{DynamicResource Ui.ForegroundMuted}"
+                   TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancel" Click="Cancel_Click" Padding="14,6"
+                    Margin="0,0,8,0"
+                    Background="{DynamicResource Ui.InputBackground}"
+                    Foreground="{DynamicResource Ui.Foreground}"
+                    BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1"
+                    IsCancel="True" />
+            <Button Content="Rename" Click="Rename_Click" Padding="14,6"
+                    Margin="0,0,8,0"
+                    Background="{DynamicResource Ui.TabSelectedBackground}"
+                    Foreground="{DynamicResource Ui.TabSelectedForeground}"
+                    BorderThickness="0" FontWeight="Bold"
+                    IsDefault="True" />
+            <Button Content="Replace" Click="Replace_Click" Padding="14,6"
+                    Background="{DynamicResource Ui.InputBackground}"
+                    Foreground="{DynamicResource Ui.Warning}"
+                    BorderBrush="{DynamicResource Ui.Warning}" BorderThickness="1" />
+        </StackPanel>
+    </StackPanel>
+</Window>

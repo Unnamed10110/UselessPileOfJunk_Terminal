@@ -23,6 +23,7 @@ public static class AppSettingsLegacyMigration
 
         SetIfMissing(nameof(AppSettings.TerminalBackground), "Background");
         SetIfMissing(nameof(AppSettings.TextDefault), "Foreground", "White");
+        SetIfMissing(nameof(AppSettings.ColorInput), "Foreground", "White");
         SetIfMissing(nameof(AppSettings.CursorColor), "Cursor");
         SetIfMissing(nameof(AppSettings.TextMuted), "BrightBlack");
 
@@ -32,6 +33,29 @@ public static class AppSettingsLegacyMigration
         SetIfMissing(nameof(AppSettings.ColorMessage), "Cyan", "BrightCyan");
         SetIfMissing(nameof(AppSettings.ColorAccent), "Blue", "BrightBlue");
         SetIfMissing(nameof(AppSettings.ColorHighlight), "Magenta", "BrightMagenta");
+
+        if (!HasNew(nameof(AppSettings.UiHighlight)))
+            s.UiHighlight = s.ColorHighlight;
+        if (!HasNew(nameof(AppSettings.UiSuccess)))
+            s.UiSuccess = s.ColorCommand;
+        if (!HasNew(nameof(AppSettings.UiWarning)))
+            s.UiWarning = s.ColorWarning;
+        if (!HasNew(nameof(AppSettings.UiError)))
+            s.UiError = s.ColorError;
+        if (!HasNew(nameof(AppSettings.UiIcon)))
+            s.UiIcon = string.IsNullOrWhiteSpace(s.UiAccent) ? s.ColorAccent : s.UiAccent;
+        if (!HasNew(nameof(AppSettings.UiTabSelectedBackground)))
+            s.UiTabSelectedBackground = string.IsNullOrWhiteSpace(s.UiAccent) ? s.ColorAccent : s.UiAccent;
+        if (!HasNew(nameof(AppSettings.UiTabSelectedForeground)))
+            s.UiTabSelectedForeground = ThemePresets.ContrastFg(s.UiTabSelectedBackground);
+        if (!HasNew(nameof(AppSettings.UiInputBackground)))
+            s.UiInputBackground = s.UiCardBackground;
+        if (!HasNew(nameof(AppSettings.UiInputForeground)))
+            s.UiInputForeground = s.UiForeground;
+        if (!HasNew(nameof(AppSettings.UiHoverBackground)))
+            s.UiHoverBackground = s.UiFolderSelectedBackground;
+        if (!HasNew(nameof(AppSettings.UiSplitter)))
+            s.UiSplitter = string.IsNullOrWhiteSpace(s.UiAccent) ? s.ColorAccent : s.UiAccent;
     }
 
     private static void Apply(string newKey, AppSettings s, string v)
@@ -40,6 +64,7 @@ public static class AppSettingsLegacyMigration
         {
             case nameof(AppSettings.TerminalBackground): s.TerminalBackground = v; break;
             case nameof(AppSettings.TextDefault): s.TextDefault = v; break;
+            case nameof(AppSettings.ColorInput): s.ColorInput = v; break;
             case nameof(AppSettings.CursorColor): s.CursorColor = v; break;
             case nameof(AppSettings.TextMuted): s.TextMuted = v; break;
             case nameof(AppSettings.ColorError): s.ColorError = v; break;

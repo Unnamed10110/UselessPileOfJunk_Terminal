@@ -24,6 +24,15 @@
   }
   /* Solid bg: allowTransparency + canvas erase (cls) otherwise leaves ghost pixels at viewport bottom */
   #terminal { position: relative; z-index: 1; width: 100%; height: 100%; background: #000000; }
+  /* Snap glyphs to the display grid: fractional CSS px * DPR is the usual source of fuzzy xterm canvas text. */
+  .xterm, .xterm-screen, .xterm-screen canvas {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+  }
+  .xterm-screen canvas {
+    image-rendering: -webkit-optimize-contrast;
+  }
   .xterm-viewport::-webkit-scrollbar { width: 8px; background: transparent; }
   .xterm-viewport::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
   .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
@@ -160,6 +169,10 @@
         fontWeightBold: 650,
         fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
         allowTransparency: false,
+        letterSpacing: 0,
+        lineHeight: 1,
+        rescaleOverlappingGlyphs: true,
+        customGlyphs: true,
         theme: {
             background: '#000000',
             foreground: '#ffffff',
@@ -238,6 +251,52 @@
 
     term.open(document.getElementById('terminal'));
 
+    function isFileDrag(e) {
+        try {
+            var types = e.dataTransfer && e.dataTransfer.types;
+            if (!types) return false;
+            for (var i = 0; i < types.length; i++) {
+                if (types[i] === 'Files') return true;
+            }
+        } catch (err) {}
+        return false;
+    }
+    function acceptFileDrag(e) {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+        if (e.type === 'dragenter') {
+            try { window.chrome.webview.postMessage(JSON.stringify({ type: 'fileDragOver' })); } catch (err) {}
+        }
+    }
+    function onFileDrop(e) {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var extra = e.dataTransfer.files;
+        try {
+            if (window.chrome.webview.postMessageWithAdditionalObjects)
+                window.chrome.webview.postMessageWithAdditionalObjects(JSON.stringify({ type: 'fileDrop' }), extra);
+            else
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'fileDrop' }));
+        } catch (err) {
+            try { window.chrome.webview.postMessage(JSON.stringify({ type: 'fileDrop' })); } catch (e2) {}
+        }
+    }
+    function onFileDragLeave(e) {
+        if (!isFileDrag(e)) return;
+        if (e.relatedTarget) return;
+        try { window.chrome.webview.postMessage(JSON.stringify({ type: 'fileDragLeave' })); } catch (err) {}
+    }
+    document.addEventListener('dragenter', acceptFileDrag, true);
+    document.addEventListener('dragover', acceptFileDrag, true);
+    document.addEventListener('drop', onFileDrop, true);
+    document.addEventListener('dragleave', onFileDragLeave, true);
+
+    // Let multiline clipboard paste land at the prompt without executing each line (PSReadLine, bash, etc.).
+    try { term.write('\x1b[?2004h'); } catch (e) { /* ignore */ }
+
     // WebGL is faster but its glyph atlas often leaves stale pixels when the shell redraws
     // in place (PSReadLine history/list, prediction) without alternate-screen switches.
     // Flip to true only if you want WebGL and accept possible ghost characters.
@@ -266,9 +325,30 @@
 
     fitAddon.fit();
 
+    /** Keep fontSize * devicePixelRatio on whole pixels so canvas glyphs are not bilinear-blurred. */
+    function snapFontSize(cssPx) {
+        var dpr = window.devicePixelRatio || 1;
+        var n = Number(cssPx);
+        if (!n || n < 8) n = 14;
+        return Math.round(n * dpr) / dpr;
+    }
+    function applyCrispFontSize(cssPx) {
+        var snapped = snapFontSize(cssPx);
+        if (Math.abs((term.options.fontSize || 0) - snapped) > 0.001)
+            term.options.fontSize = snapped;
+        return snapped;
+    }
+    applyCrispFontSize(term.options.fontSize);
+    var _lastDpr = window.devicePixelRatio || 1;
+
     /** Fit xterm to DOM and sync cols/rows to ConPTY (FitAddon early-noops if cell metrics are 0). */
     function refitAndNotifyHost() {
         try {
+            var dpr = window.devicePixelRatio || 1;
+            if (Math.abs(dpr - _lastDpr) > 0.001) {
+                _lastDpr = dpr;
+                applyCrispFontSize(term.options.fontSize);
+            }
             fitAddon.fit();
             sendResize();
         } catch (e) { /* ignore */ }
@@ -362,6 +442,29 @@
             term.onWriteParsed(function() { scheduleRedrawAfterPtyIdle(); });
     } catch (e) { /* ignore on older xterm */ }
 
+    // After each prompt (OSC 7), set the graphic rendition so shells that echo
+    // without their own SGR (cmd) render typed characters in ColorInput.
+    var _typedInputSgr = '';
+    function hexToRgb(hex) {
+        if (!hex || typeof hex !== 'string') return null;
+        hex = hex.trim();
+        if (hex.charAt(0) === '#') hex = hex.substring(1);
+        if (hex.length === 3)
+            hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+        if (hex.length !== 6) return null;
+        var n = parseInt(hex, 16);
+        if (isNaN(n)) return null;
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    }
+    function setTypedInputColor(hex) {
+        var rgb = hexToRgb(hex);
+        _typedInputSgr = rgb ? ('\x1b[38;2;' + rgb.r + ';' + rgb.g + ';' + rgb.b + 'm') : '';
+    }
+    function applyTypedInputColor() {
+        if (!_typedInputSgr) return;
+        try { term.write(_typedInputSgr); } catch (e) {}
+    }
+
     // --- OSC 7: CWD tracking (file://host/path) ---
     // Tolerate backslashes (cmd.exe), forward slashes (PowerShell/bash), and an
     // optional host segment ("file://localhost/..."). Always normalise Windows paths
@@ -369,17 +472,25 @@
     term.parser.registerOscHandler(7, function(data) {
         try {
             let cwd = data;
+            let host = '';
             if (cwd.startsWith('file://')) {
                 cwd = cwd.substring(7);
                 if (!cwd.startsWith('/') && !cwd.startsWith('\\')) {
                     const slash = cwd.search(/[\/\\]/);
-                    cwd = slash > 0 ? cwd.substring(slash) : '';
+                    if (slash > 0) {
+                        host = cwd.substring(0, slash);
+                        cwd = cwd.substring(slash);
+                    } else {
+                        host = cwd;
+                        cwd = '';
+                    }
                 }
                 try { cwd = decodeURIComponent(cwd); } catch (e) {}
                 if (/^[\/\\][A-Za-z]:/.test(cwd)) cwd = cwd.substring(1);
             }
             if (/^[A-Za-z]:/.test(cwd)) cwd = cwd.replace(/\//g, '\\');
-            if (cwd) window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd }));
+            if (cwd) window.chrome.webview.postMessage(JSON.stringify({ type: 'cwd', data: cwd, host: host }));
+            queueMicrotask(applyTypedInputColor);
         } catch (e) { }
         return true;
     });
@@ -455,7 +566,7 @@
     };
 
     window.termSetFontSize = function(size) {
-        term.options.fontSize = size;
+        applyCrispFontSize(size);
         fitAddon.fit();
     };
 
@@ -479,7 +590,7 @@
     window.termApplySettingsRaw = function(jsonStr) {
         const s = JSON.parse(jsonStr);
         if (s.fontFamily) term.options.fontFamily = s.fontFamily;
-        if (s.fontSize) term.options.fontSize = s.fontSize;
+        if (s.fontSize) applyCrispFontSize(s.fontSize);
         if (s.fontWeight !== undefined && s.fontWeight !== null)
             term.options.fontWeight = s.fontWeight;
         if (s.fontWeightBold !== undefined && s.fontWeightBold !== null)
@@ -514,6 +625,7 @@
         const useBgImg = !!(s.useBackgroundImage && s.backgroundImageDataUrl);
         termEl.style.background = useBgImg ? 'transparent' : '#000000';
         try { term.options.allowTransparency = useBgImg; } catch (e) {}
+        if (s.colorInput) setTypedInputColor(s.colorInput);
         requestAnimationFrame(function() {
             refitAndNotifyHost();
             setTimeout(refitAndNotifyHost, 50);
@@ -536,7 +648,7 @@
         if (next < minFont) next = minFont;
         if (next > maxFont) next = maxFont;
         if (next === Math.round(term.options.fontSize)) return;
-        term.options.fontSize = next;
+        applyCrispFontSize(next);
         fitAddon.fit();
         sendResize();
         window.chrome.webview.postMessage(JSON.stringify({ type: 'fontSize', fontSize: next }));
@@ -546,6 +658,20 @@
     function copySelectionToClipboard() {
         const sel = term.getSelection();
         if (sel) navigator.clipboard.writeText(sel);
+    }
+
+    var BRACKET_PASTE_START = '\x1b[200~';
+    var BRACKET_PASTE_END = '\x1b[201~';
+
+    function pasteTextToTerminal(text) {
+        if (!text) return;
+        // Without bracketed paste, xterm turns each newline into Enter and the shell runs every line.
+        if (text.indexOf('\n') >= 0 || text.indexOf('\r') >= 0) {
+            var payload = text.replace(/\x1b/g, '\u241b');
+            term.input(BRACKET_PASTE_START + payload + BRACKET_PASTE_END);
+        } else {
+            term.paste(text);
+        }
     }
 
     function pasteFromClipboard() {
@@ -566,10 +692,18 @@
             } catch (e) { /* ignore */ }
             try {
                 var text = await navigator.clipboard.readText();
-                if (text) term.paste(text);
+                if (text) pasteTextToTerminal(text);
             } catch (e) { /* ignore */ }
         })();
     }
+
+    // Ctrl+V (and Shift+Insert) fire a native paste event in WebView2 as well as keydown.
+    // Handle paste only here so xterm does not also insert clipboard text (double paste).
+    term.element.addEventListener('paste', function(ev) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        pasteFromClipboard();
+    }, true);
 
     term.attachCustomKeyEventHandler(function(ev) {
         if (ev.type !== 'keydown') return true;
@@ -583,8 +717,11 @@
             return true;
         }
         if (ctrl && ev.code === 'KeyV') {
-            pasteFromClipboard();
             return false;
+        }
+        if (ev.code === 'Enter' || ev.code === 'NumpadEnter') {
+            try { term.write('\x1b[39m'); } catch (e) {}
+            return true;
         }
         if (ctrl && shift && ev.code === 'KeyF') {
             toggleSearch();
