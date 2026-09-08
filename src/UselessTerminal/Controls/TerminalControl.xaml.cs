@@ -21,11 +21,19 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         PropertyNameCaseInsensitive = true,
     };
 
+    private const int OutputHighWaterBytes = 8 * 1024 * 1024;
+    private const int OutputLowWaterBytes = 2 * 1024 * 1024;
+    private const int MaxBatchBytes = 64 * 1024;
+    private const int PendingOutputCapBytes = 4 * 1024 * 1024;
+
     private ConPtySession? _session;
     private bool _webViewReady;
     private readonly Queue<byte[]> _pendingOutput = new();
-    private readonly Queue<string> _webWriteQueue = new();
+    private readonly Queue<byte[]> _webWriteQueue = new();
     private bool _webWritePumpRunning;
+    private long _webQueuedBytes;
+    private readonly System.Threading.ManualResetEventSlim _drainGate = new(initialState: true);
+    private long _pendingOutputBytes;
     private bool _disposed;
     private (string Command, string? WorkingDirectory, short Cols, short Rows, string? StartingCommand)? _pendingSessionStart;
     private string? _startingCommand;
@@ -37,6 +45,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     private short _lastKnownCols = 120;
     private short _lastKnownRows = 30;
     private bool _hasReceivedResize;
+    private short _appliedPtyCols;
+    private short _appliedPtyRows;
 
     public event Action<string>? TitleChanged;
     public event Action<TerminalControl>? PaneFocused;
@@ -222,7 +232,12 @@ public sealed partial class TerminalControl : UserControl, IDisposable
                         _hasReceivedResize = true;
                         if (_session is not null)
                         {
-                            _session.Resize(_lastKnownCols, _lastKnownRows);
+                            if (_lastKnownCols != _appliedPtyCols || _lastKnownRows != _appliedPtyRows)
+                            {
+                                _session.Resize(_lastKnownCols, _lastKnownRows);
+                                _appliedPtyCols = _lastKnownCols;
+                                _appliedPtyRows = _lastKnownRows;
+                            }
                         }
                         else
                         {
@@ -332,6 +347,8 @@ public sealed partial class TerminalControl : UserControl, IDisposable
     {
         _session?.Dispose();
         _session = null;
+        _appliedPtyCols = 0;
+        _appliedPtyRows = 0;
         _startingCommand = string.IsNullOrWhiteSpace(startingCommand) ? null : startingCommand.Trim();
         _sshMuxControlPath = null;
         _cwdHost = null;
@@ -383,51 +400,63 @@ public sealed partial class TerminalControl : UserControl, IDisposable
         _session.OutputReceived += OnOutputReceived;
         _session.ProcessExited += OnProcessExited;
         _session.Start(launchCommand, workingDirectory, cols, rows, ExtraEnvironment);
+        _appliedPtyCols = cols;
+        _appliedPtyRows = rows;
         _shellCommand = command;
         CurrentWorkingDirectory = workingDirectory;
         InjectShellIntegrationAsync();
         ScheduleStartingCommandViaStdin();
     }
 
+    private enum ShellKind { Unknown, PowerShell, Cmd, Posix, Wsl, Ssh }
+
+    private static ShellKind DetectShellKind(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return ShellKind.Unknown;
+        string lower = command.ToLowerInvariant();
+        if (lower.Contains("pwsh") || lower.Contains("powershell")) return ShellKind.PowerShell;
+        if (SshConnection.LooksLikeSsh(command)) return ShellKind.Ssh;
+        if (lower.Contains("wsl.exe") || lower.Contains("\\wsl") || lower == "wsl") return ShellKind.Wsl;
+        if (lower.EndsWith("cmd.exe") || lower.EndsWith("cmd.exe\"") || lower.EndsWith("\\cmd") || lower == "cmd" || lower.Contains("\\cmd.exe")) return ShellKind.Cmd;
+        if (lower.Contains("bash") || lower.Contains("zsh") || lower.Contains("\\sh.exe") || lower.EndsWith("/sh")) return ShellKind.Posix;
+        return ShellKind.Unknown;
+    }
+
     /// <summary>
-    /// Most shells don't emit OSC 7 (cwd) by default. For cmd and bash we send a one-line
-    /// init through stdin. PowerShell is handled at launch time via
-    /// <see cref="MaybeInjectPowerShellArgs"/> which appends -NoExit -EncodedCommand
-    /// — far more reliable than racing PSReadLine over stdin.
+    /// Most shells don't emit OSC 133 (shell integration) or OSC 7 (cwd) by default. For cmd
+    /// and POSIX shells (bash/zsh, including under WSL) we send a one-line init through stdin.
+    /// PowerShell is handled at launch time via <see cref="MaybeInjectPowerShellArgs"/> which
+    /// appends -NoExit -EncodedCommand — far more reliable than racing PSReadLine over stdin.
+    /// SSH sessions are never touched here: we don't control the remote shell.
     /// </summary>
     private void InjectShellIntegrationAsync()
     {
         if (string.IsNullOrWhiteSpace(_shellCommand)) return;
-        string lower = _shellCommand.ToLowerInvariant();
+        ShellKind kind = DetectShellKind(_shellCommand);
 
-        // PowerShell init is baked into the launch command, nothing to do via stdin.
-        if (lower.Contains("pwsh") || lower.Contains("powershell")) return;
-
-        string? init = null;
-
-        if (lower.EndsWith("cmd.exe") || lower.EndsWith("cmd.exe\"") || lower.EndsWith("\\cmd") || lower == "cmd" || lower.Contains("\\cmd.exe"))
+        string? init = kind switch
         {
-            // Use cmd's $e for ESC; emit OSC 7 then the standard prompt; clear screen.
-            init = "prompt $e]7;file:///$P$e\\$P$G & cls\r\n";
-            if (!string.IsNullOrWhiteSpace(_startingCommand))
+            ShellKind.Cmd => BuildCmdInit(),
+            ShellKind.Posix => BuildPosixInit(includeOsc7: true),
+            ShellKind.Wsl => BuildPosixInit(includeOsc7: false),
+            _ => null, // PowerShell (baked into the launch command), Ssh (never inject), Unknown.
+        };
+
+        if (init is null) return;
+
+        if (!string.IsNullOrWhiteSpace(_startingCommand))
+        {
+            if (kind == ShellKind.Cmd)
             {
                 init += ToConPtyInput(_startingCommand);
-                _startingCommand = null;
             }
-        }
-        else if (lower.Contains("bash") || lower.Contains("\\sh.exe") || lower.EndsWith("/sh") || lower.EndsWith("/zsh") || lower.Contains("zsh"))
-        {
-            // Convert backslashes to forward slashes for file:// URL.
-            init = "PROMPT_COMMAND='printf \"\\033]7;file://%s\\007\" \"${PWD//\\\\//}\"'\nprintf '\\033[?2004h'\nclear\n";
-            if (!string.IsNullOrWhiteSpace(_startingCommand))
+            else
             {
                 init += _startingCommand.Replace("\r\n", "\n").Replace('\r', '\n');
                 if (!init.EndsWith('\n')) init += "\n";
-                _startingCommand = null;
             }
+            _startingCommand = null;
         }
-
-        if (init is null) return;
 
         Task.Delay(700).ContinueWith(_ =>
         {
@@ -439,6 +468,37 @@ public sealed partial class TerminalControl : UserControl, IDisposable
             catch { }
         }, TaskScheduler.Default);
     }
+
+    // cmd.exe has no pre-exec hook and no way to expose ERRORLEVEL at prompt-draw time, so
+    // only prompt-boundary markers (A/B) are achievable — no C (command-start) and no exit
+    // code (D stays bare). $e = ESC, $e\ = ST (cmd has no BEL escape code), $P = cwd, $G = '>'.
+    private static string BuildCmdInit() =>
+        "set \"PROMPT=$e]133;D$e\\$e]133;A$e\\$e]7;file:///$P$e\\$P$G$s$e]133;B$e\\\" & cls\r\n";
+
+    private static string BuildPosixInit(bool includeOsc7)
+    {
+        var sb = new StringBuilder();
+        if (includeOsc7) sb.Append("__UT_OSC7=1; ");
+        sb.Append("if [ -n \"$ZSH_VERSION\" ]; then ").Append(ZshIntegration)
+          .Append(" elif [ -n \"$BASH_VERSION\" ]; then ").Append(BashIntegration)
+          .Append(" fi; printf '\\033[?2004h'; clear\n");
+        return sb.ToString();
+    }
+
+    private const string BashIntegration =
+        "__ut_mark=0; __ut_seen=0; " +
+        "__ut_pre() { case \"$BASH_COMMAND\" in __ut_precmd*) return;; esac; if [ \"$__ut_mark\" = 0 ]; then __ut_mark=1; printf '\\033]133;C\\007'; fi; }; " +
+        "__ut_precmd() { local __ut_ec=$?; if [ \"$__ut_seen\" = 1 ]; then printf '\\033]133;D;%s\\007' \"$__ut_ec\"; fi; __ut_seen=1; if [ -n \"$__UT_OSC7\" ]; then printf '\\033]7;file://%s\\007' \"${PWD//\\\\//}\"; fi; __ut_mark=0; return $__ut_ec; }; " +
+        "case \"$PROMPT_COMMAND\" in *__ut_precmd*) ;; *) PROMPT_COMMAND=\"__ut_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}\";; esac; " +
+        "case \"$PS1\" in *'133;A'*) ;; *) PS1='\\[\\e]133;A\\a\\]'\"$PS1\"'\\[\\e]133;B\\a\\]';; esac; " +
+        "if [ -z \"$(trap -p DEBUG)\" ]; then trap '__ut_pre' DEBUG; fi;";
+
+    private const string ZshIntegration =
+        "__ut_seen=0; " +
+        "__ut_precmd() { local ec=$?; [ \"$__ut_seen\" = 1 ] && printf '\\033]133;D;%s\\007' \"$ec\"; __ut_seen=1; [ -n \"$__UT_OSC7\" ] && printf '\\033]7;file://%s\\007' \"$PWD\"; return 0; }; " +
+        "__ut_preexec() { printf '\\033]133;C\\007'; }; " +
+        "autoload -Uz add-zsh-hook && add-zsh-hook precmd __ut_precmd && add-zsh-hook preexec __ut_preexec; " +
+        "case \"$PS1\" in *'133;A'*) ;; *) PS1=$'%{\\e]133;A\\a%}'\"$PS1\"$'%{\\e]133;B\\a%}';; esac;";
 
     /// <summary>
     /// If the launch command is a bare PowerShell (pwsh / powershell, no -File / -Command /
@@ -521,16 +581,57 @@ function global:__utWrap {
     if ($cur) { $global:__utOrigPrompt = $cur }
     function global:prompt {
         # __utEmitCwdMarker
+        $__utOk  = $?
+        $__utLec = $global:LASTEXITCODE
         try { __utApplyInputColor } catch {}
+        try { __utWrapReadLine } catch {}
+
+        $e = $global:__utE; $b = $global:__utB
+        $out = ''
+
+        $__utHid = -1
+        try { $__utH = Get-History -Count 1 -ErrorAction SilentlyContinue; if ($__utH) { $__utHid = $__utH.Id } } catch {}
+        if ($global:__utPromptSeen) {
+            if ($__utHid -ne -1 -and $__utHid -eq $global:__utLastHistoryId) {
+                $out += $e + ']133;D' + $b
+            } else {
+                $__utCode = 0
+                if (-not $__utOk) {
+                    if ($null -ne $__utLec -and ""$__utLec"" -ne '') { $__utCode = $__utLec } else { $__utCode = 1 }
+                }
+                $out += $e + ']133;D;' + $__utCode + $b
+            }
+        }
+        $global:__utPromptSeen = $true
+        $global:__utLastHistoryId = $__utHid
+
+        $out += $e + ']133;A' + $b
         $p = $PWD.Path -replace '\\','/'
-        $osc = $global:__utE + ']7;file:///' + $p + $global:__utB
+        $out += $e + ']7;file:///' + $p + $b
+
         $orig = ''
         if ($global:__utOrigPrompt) {
             try { $orig = & $global:__utOrigPrompt } catch { $orig = 'PS ' + $PWD.Path + '> ' }
         } else {
             $orig = 'PS ' + $PWD.Path + '> '
         }
-        $osc + ([string]$orig)
+        $out += [string]$orig
+
+        $out += $e + ']133;B' + $b
+        $out
+    }
+}
+
+function global:__utWrapReadLine {
+    $rl = Get-Item Function:PSConsoleHostReadLine -ErrorAction SilentlyContinue
+    if (-not $rl) { return }
+    if ($rl.ScriptBlock.ToString() -match '__utReadLineMarker') { return }
+    $global:__utOrigReadLine = $rl.ScriptBlock
+    function global:PSConsoleHostReadLine {
+        # __utReadLineMarker
+        $line = & $global:__utOrigReadLine
+        try { [Console]::Write($global:__utE + ']133;C' + $global:__utB) } catch {}
+        $line
     }
 }
 
@@ -667,7 +768,21 @@ function global:__utApplyInputColor {{
         else
         {
             lock (_pendingOutput)
-                _pendingOutput.Enqueue(data);
+            {
+                if (_pendingOutputBytes < PendingOutputCapBytes)
+                {
+                    _pendingOutput.Enqueue(data);
+                    _pendingOutputBytes += data.Length;
+                }
+            }
+        }
+
+        // Backpressure: only ever wait here on the reader thread, never the UI thread.
+        // Blocking here stalls the PTY read loop, which is exactly the correct flow-control
+        // behavior (ConPTY/conhost already block a slow-reading consumer).
+        if (!Dispatcher.CheckAccess())
+        {
+            while (!_disposed && !_drainGate.Wait(200)) { }
         }
     }
 
@@ -676,69 +791,126 @@ function global:__utApplyInputColor {{
         lock (_pendingOutput)
         {
             while (_pendingOutput.Count > 0)
-                WriteToTerminal(_pendingOutput.Dequeue());
+            {
+                var data = _pendingOutput.Dequeue();
+                _pendingOutputBytes -= data.Length;
+                WriteToTerminal(data);
+            }
         }
     }
 
     private void WriteToTerminal(byte[] data)
     {
-        string arg = JsonSerializer.Serialize(Convert.ToBase64String(data));
+        bool needPump;
         lock (_webWriteQueue)
-            _webWriteQueue.Enqueue(arg);
-        PumpWebWriteQueue();
+        {
+            _webWriteQueue.Enqueue(data);
+            _webQueuedBytes += data.Length;
+            if (_webQueuedBytes >= OutputHighWaterBytes) _drainGate.Reset();
+            needPump = !_webWritePumpRunning;
+            if (needPump) _webWritePumpRunning = true;
+        }
+        if (needPump) PumpWebWriteQueue();
     }
 
     private void PumpWebWriteQueue()
     {
         Dispatcher.InvokeAsync(async () =>
         {
-            if (_disposed) return;
-
-            lock (_webWriteQueue)
-            {
-                if (_webWritePumpRunning) return;
-                _webWritePumpRunning = true;
-            }
-
             try
             {
                 while (!_disposed)
                 {
-                    string? next = null;
+                    byte[]? batch;
                     lock (_webWriteQueue)
                     {
-                        if (_webWriteQueue.Count > 0)
-                            next = _webWriteQueue.Dequeue();
-                    }
+                        if (_webWriteQueue.Count == 0)
+                        {
+                            _webWritePumpRunning = false;
+                            return;
+                        }
 
-                    if (next is null) break;
+                        int take = 0;
+                        var parts = new List<byte[]>();
+                        while (_webWriteQueue.Count > 0 &&
+                               (take == 0 || take + _webWriteQueue.Peek().Length <= MaxBatchBytes))
+                        {
+                            var c = _webWriteQueue.Dequeue();
+                            parts.Add(c);
+                            take += c.Length;
+                        }
+                        _webQueuedBytes -= take;
+                        if (_webQueuedBytes <= OutputLowWaterBytes) _drainGate.Set();
+
+                        if (parts.Count == 1)
+                        {
+                            batch = parts[0];
+                        }
+                        else
+                        {
+                            batch = new byte[take];
+                            int offset = 0;
+                            foreach (var part in parts)
+                            {
+                                Buffer.BlockCopy(part, 0, batch, offset, part.Length);
+                                offset += part.Length;
+                            }
+                        }
+                    }
 
                     try
                     {
-                        await WebView.ExecuteScriptAsync($"window.termWrite({next})");
+                        // Base64 output is limited to A-Z a-z 0-9 + / = , all of which are safe
+                        // to interpolate directly inside a JS double-quoted string literal.
+                        string b64 = Convert.ToBase64String(batch);
+                        await WebView.ExecuteScriptAsync($"window.termWrite(\"{b64}\")");
                     }
                     catch { /* WebView disposed */ }
                 }
             }
             finally
             {
-                lock (_webWriteQueue)
-                    _webWritePumpRunning = false;
-
+                bool requeue = false;
                 lock (_webWriteQueue)
                 {
                     if (_webWriteQueue.Count > 0 && !_disposed)
-                        PumpWebWriteQueue();
+                    {
+                        _webWritePumpRunning = true;
+                        requeue = true;
+                    }
+                    else
+                    {
+                        _webWritePumpRunning = false;
+                    }
                 }
+                if (requeue) PumpWebWriteQueue();
             }
         }, DispatcherPriority.Normal);
+    }
+
+    /// <summary>
+    /// Starts the pump only if it isn't already running, claiming <see cref="_webWritePumpRunning"/>
+    /// under the queue lock first. Unlike calling <see cref="PumpWebWriteQueue"/> directly (which no
+    /// longer re-checks that flag internally — ownership is claimed by the caller so batches stay in
+    /// strict FIFO order), this is safe to call from anywhere, including when a pump may already be
+    /// draining the queue.
+    /// </summary>
+    private void EnsurePumpRunning()
+    {
+        bool needPump;
+        lock (_webWriteQueue)
+        {
+            needPump = !_webWritePumpRunning;
+            if (needPump) _webWritePumpRunning = true;
+        }
+        if (needPump) PumpWebWriteQueue();
     }
 
     private void OnProcessExited()
     {
         Dispatcher.InvokeAsync(() =>
         {
-            PumpWebWriteQueue();
+            EnsurePumpRunning();
             TitleChanged?.Invoke("[Process Exited]");
         });
     }
@@ -936,10 +1108,15 @@ function global:__utApplyInputColor {{
     {
         if (_disposed) return;
         _disposed = true;
+        // Release any reader thread parked on the gate BEFORE we wait on _session.Dispose()'s
+        // internal read-task join — otherwise tab-close could hang up to that join's timeout
+        // whenever the web-write queue was above the high-water mark.
+        _drainGate.Set();
         _dropStatusTimer?.Stop();
         _dropCopyInProgress = false;
         _session?.Dispose();
         _session = null;
+        _drainGate.Dispose();
     }
 
     private void Terminal_PreviewDragOver(object sender, DragEventArgs e)

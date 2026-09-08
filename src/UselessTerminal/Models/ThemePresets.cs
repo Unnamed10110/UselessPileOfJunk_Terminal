@@ -31,6 +31,12 @@ public static class ThemePresets
         ["Tokyo Night"] = Dark("#1a1b26", "#a9b1d6", "#c0caf5", "#565f89",
             "#f7768e", "#e0af68", "#9ece6a", "#7dcfff", "#7aa2f7", "#bb9af7",
             "#c0caf5", "#33467c", "#c0caf5"),
+        ["Ayu Dark"] = Dark("#0A0E14", "#BFBDB6", "#FFB454", "#626A73",
+            "#F07178", "#E6B450", "#AAD94C", "#95E6CB", "#FFB454", "#D2A6FF",
+            "#FFB454", "#253340", "#BFBDB6"),
+        ["Vesper"] = Dark("#101010", "#FFFFFF", "#FFFFFF", "#666666",
+            "#D9827A", "#E8C989", "#A8C787", "#8FBCBB", "#FFC799", "#C9A0DC",
+            "#FFFFFF", "#2A2A2A", "#FFFFFF"),
 
         ["AMOLED Green"] = Amoled("#39ff14", "#00e676", "#c6ff00", "#ff1744", "#18ffff"),
         ["AMOLED Red"] = Amoled("#ff1744", "#ff5252", "#ffab00", "#ff1744", "#ff80ab"),
@@ -59,7 +65,8 @@ public static class ThemePresets
     {
         settings.TerminalBackground = preset.TerminalBackground;
         settings.TextDefault = preset.TextDefault;
-        settings.ColorInput = preset.ColorInput;
+        // Typed-input color is a personal setting, independent of the theme's prompt/output
+        // colors - applying a preset must not touch it (see SettingsWindow's "Typed input" entry).
         settings.TextMuted = preset.TextMuted;
         settings.ColorError = preset.ColorError;
         settings.ColorWarning = preset.ColorWarning;

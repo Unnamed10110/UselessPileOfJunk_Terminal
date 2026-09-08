@@ -17,6 +17,7 @@
     <UserControl.Resources>
         <conv:HexColorConverter x:Key="HexColor" />
         <conv:SavedSessionShellIconConverter x:Key="SessionShellIcon" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <SolidColorBrush x:Key="SessionRowHover" Color="#12ffffff" />
         <SolidColorBrush x:Key="SessionIndentGuide" Color="#1a2030" />
@@ -59,10 +60,11 @@
         <HierarchicalDataTemplate DataType="{x:Type local:SessionTreeNode}" ItemsSource="{Binding Children}">
             <Grid HorizontalAlignment="Stretch" MinWidth="0" ClipToBounds="True">
                 <!-- ═══ Folder card ═══ -->
-                <Border MinHeight="44" HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                        CornerRadius="8" Padding="6,6,10,6" BorderThickness="1"
-                        Background="{DynamicResource Ui.CardBackground}"
-                        BorderBrush="{DynamicResource Ui.CardBorder}">
+                <Border MinHeight="32" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                        CornerRadius="8" Padding="6,4,6,4" BorderThickness="0"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource Ui.CardBorder}"
+                        MouseEnter="FolderCard_MouseEnter" MouseLeave="FolderCard_MouseLeave">
                     <Border.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                             <MenuItem Header="New session in folder" Click="ContextFolder_AddSession_Click"
@@ -94,12 +96,14 @@
                                              Value="True">
                                     <Setter Property="Background" Value="{DynamicResource Ui.FolderSelectedBackground}" />
                                     <Setter Property="BorderBrush" Value="{DynamicResource Ui.Accent}" />
+                                    <Setter Property="BorderThickness" Value="1" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
                     <DockPanel HorizontalAlignment="Stretch" MinWidth="0" LastChildFill="True">
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel x:Name="FolderActionsPanel" DockPanel.Dock="Right" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Opacity="0">
                             <Button Click="AddSessionInFolder_Click" Tag="{Binding Folder.Id}"
                                     ToolTip="New session in folder" Background="Transparent" BorderThickness="0"
                                     Padding="4,3" Cursor="Hand" Foreground="{DynamicResource Ui.ForegroundMuted}">
@@ -114,6 +118,11 @@
                                     Padding="4,3" Cursor="Hand" Foreground="{DynamicResource Ui.ForegroundMuted}"
                                     Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="11" />
                         </StackPanel>
+                        <Border DockPanel.Dock="Right" CornerRadius="10" Background="#0Cffffff"
+                                Padding="7,1" Margin="0,0,6,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Children.Count}" FontSize="10.5"
+                                       Foreground="{DynamicResource Ui.ForegroundMuted}" />
+                        </Border>
                         <ToggleButton DockPanel.Dock="Left" Width="26" Height="26"
                                       VerticalAlignment="Center" Margin="0,0,4,0"
                                       Background="Transparent" BorderThickness="0"
@@ -234,6 +243,14 @@
                                     ToolTip="Delete" Content="&#xE74D;"
                                     FontFamily="Segoe MDL2 Assets" FontSize="11" />
                         </StackPanel>
+                        <Ellipse DockPanel.Dock="Right" Width="6" Height="6" VerticalAlignment="Center"
+                                 Margin="0,0,6,0" Fill="{DynamicResource Ui.Success}"
+                                 Visibility="{Binding IsLive, Converter={StaticResource BoolToVis}}" />
+                        <Ellipse DockPanel.Dock="Left" Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,10,0">
+                            <Ellipse.Fill>
+                                <SolidColorBrush Color="{Binding Session.ColorTag, Converter={StaticResource HexColor}}" />
+                            </Ellipse.Fill>
+                        </Ellipse>
                         <Image DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,10,0"
                                Width="20" Height="20" Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"
@@ -270,43 +287,66 @@
             <DockPanel>
                 <TextBlock Text="Sessions" FontSize="{DynamicResource Ui.FontSizeTitle}" FontWeight="{DynamicResource Ui.FontWeight}"
                            Foreground="{DynamicResource Ui.Accent}" VerticalAlignment="Center" />
-                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
-                    <Button Click="ExportSessions_Click"
-                            ToolTip="Export sessions (JSON)"
-                            Background="Transparent" BorderThickness="0"
-                            Padding="6,4" Cursor="Hand" Foreground="{DynamicResource Ui.Icon}">
-                        <ui:SymbolIcon Symbol="ArrowUp24" FontSize="14" />
-                    </Button>
-                    <Button Click="ImportSessions_Click"
-                            ToolTip="Import sessions (JSON)"
-                            Background="Transparent" BorderThickness="0"
-                            Padding="6,4" Cursor="Hand" Foreground="{DynamicResource Ui.Icon}">
-                        <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="14" />
-                    </Button>
-                    <Button Click="AddFolderRoot_Click"
-                            ToolTip="New folder"
-                            Background="Transparent" BorderThickness="0"
-                            Padding="6,4" Cursor="Hand" Foreground="{DynamicResource Ui.Icon}">
-                        <ui:SymbolIcon Symbol="FolderAdd24" FontSize="14" />
-                    </Button>
+                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Click="AddSession_Click"
                             ToolTip="New Session (Ctrl+Shift+N)"
+                            Height="30" Padding="10,0,10,0" Margin="0,0,6,0"
+                            Cursor="Hand" FocusVisualStyle="{x:Null}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="PillBorder" CornerRadius="7"
+                                        Background="{DynamicResource Ui.AccentDim}"
+                                        Padding="{TemplateBinding Padding}">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <ui:SymbolIcon Symbol="Add24" FontSize="13" Foreground="{DynamicResource Ui.Accent}"
+                                                       VerticalAlignment="Center" Margin="0,0,5,0" />
+                                        <TextBlock Text="New" Foreground="{DynamicResource Ui.Accent}"
+                                                   FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="PillBorder" Property="Opacity" Value="0.85" />
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="PillBorder" Property="Opacity" Value="0.7" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="MoreMenuButton" Click="MoreMenu_Click"
+                            ToolTip="More"
                             Background="Transparent" BorderThickness="0"
                             Padding="6,4" Cursor="Hand" Foreground="{DynamicResource Ui.Icon}">
-                        <ui:SymbolIcon Symbol="Add24" FontSize="14" />
+                        <ui:SymbolIcon Symbol="MoreHorizontal24" FontSize="14" />
+                        <Button.ContextMenu>
+                            <ContextMenu Placement="Bottom">
+                                <MenuItem Header="Export sessions…" Click="ExportSessions_Click" />
+                                <MenuItem Header="Import sessions…" Click="ImportSessions_Click" />
+                                <MenuItem Header="New folder" Click="AddFolderRoot_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
                     </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
 
         <Border Grid.Row="1" Padding="10,8,10,6">
-            <Border CornerRadius="8" BorderBrush="{DynamicResource Ui.Accent}" BorderThickness="1" Background="{DynamicResource Ui.InputBackground}" Padding="0">
-                <TextBox x:Name="SearchBox"
-                         TextChanged="SearchBox_TextChanged"
-                         Background="Transparent" Foreground="{DynamicResource Ui.InputForeground}"
-                         BorderThickness="0"
-                         Padding="10,8" FontSize="12"
-                         CaretBrush="{DynamicResource Ui.Foreground}" />
+            <Border x:Name="SearchBoxBorder" CornerRadius="8" BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Background="{DynamicResource Ui.InputBackground}" Padding="0">
+                <DockPanel LastChildFill="True">
+                    <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Search24" FontSize="13"
+                                   Foreground="{DynamicResource Ui.ForegroundMuted}"
+                                   Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBox x:Name="SearchBox"
+                             TextChanged="SearchBox_TextChanged"
+                             GotFocus="SearchBox_GotFocus"
+                             LostFocus="SearchBox_LostFocus"
+                             Background="Transparent" Foreground="{DynamicResource Ui.InputForeground}"
+                             BorderThickness="0"
+                             Padding="8,8,10,8" FontSize="12"
+                             CaretBrush="{DynamicResource Ui.Foreground}" />
+                </DockPanel>
             </Border>
         </Border>
 

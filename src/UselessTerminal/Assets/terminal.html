@@ -495,24 +495,105 @@
         return true;
     });
 
-    // --- OSC 133: Shell Integration (prompt markers) ---
+    // --- OSC 133 shell integration: prompt markers + command boundaries ---
+    // Phase machine: 'prompt' (A) -> 'input' (B) -> 'running' (C) -> 'done' (D).
+    // Transitions only fire from their expected predecessor, so a prompt theme that
+    // also emits OSC 133 (oh-my-posh / starship) cannot double-count.
+    var SI_MAX_MARKERS = 512;
+    var _siMarkers = [];        // xterm IMarker, one per prompt (A), ascending by line
+    var _siTurn = null;         // { phase, promptLine, inputLine, outputLine, exitCode }
+    var _siNavAnchor = null;    // absolute buffer line of our last jump, or null
+    var _siNavScrollY = -1;     // viewportY we last set programmatically
+
+    function _siAbsLine() {
+        var b = term.buffer.active;
+        return b.baseY + b.cursorY;
+    }
+
+    function _siPrune() {
+        for (var i = _siMarkers.length - 1; i >= 0; i--) {
+            var m = _siMarkers[i];
+            if (!m || m.isDisposed || typeof m.line !== 'number' || m.line < 0)
+                _siMarkers.splice(i, 1);
+        }
+    }
+
+    function _siReset() {
+        for (var i = 0; i < _siMarkers.length; i++) { try { _siMarkers[i].dispose(); } catch (e) {} }
+        _siMarkers = [];
+        _siTurn = null;
+        _siNavAnchor = null;
+    }
+
+    // OSC 133;A - prompt start. Registers the scrollback marker used for navigation.
+    function _siPromptStart() {
+        if (term.buffer.active.type !== 'normal') return;   // alt screen (vim/less/fzf): no meaningful position
+        var line = _siAbsLine();
+        _siPrune();
+        var last = _siMarkers[_siMarkers.length - 1];
+        if (last && last.line === line) {
+            _siTurn = { phase: 'prompt', promptLine: line };
+            return;
+        }
+        var m = null;
+        try { m = term.registerMarker(0); } catch (e) { return; }
+        if (!m) return;
+        _siMarkers.push(m);
+        if (_siMarkers.length > SI_MAX_MARKERS) {
+            var old = _siMarkers.shift();
+            try { old.dispose(); } catch (e) {}
+        }
+        _siNavAnchor = null;
+        _siTurn = { phase: 'prompt', promptLine: line };
+    }
+
+    function _siCommandStart() {          // OSC 133;B
+        if (!_siTurn || _siTurn.phase !== 'prompt') return;
+        _siTurn.phase = 'input';
+        _siTurn.inputLine = _siAbsLine();
+    }
+
+    function _siCommandExecuted() {       // OSC 133;C
+        if (!_siTurn || _siTurn.phase !== 'input') return;
+        _siTurn.phase = 'running';
+        _siTurn.outputLine = _siAbsLine();
+    }
+
+    function _siCommandFinished(rest) {   // OSC 133;D - returns true if the host should be notified
+        if (!_siTurn) return true;
+        if (_siTurn.phase === 'done') return false;
+        _siTurn.phase = 'done';
+        _siTurn.exitCode = rest;
+        return true;
+    }
+
     // A = prompt start, B = command start, C = command executed, D = command finished (with exit code)
     term.parser.registerOscHandler(133, function(data) {
         try {
             if (!data || data.length === 0) return true;
             var marker = data.charAt(0);
             var rest = data.length > 2 ? data.substring(2) : '';
-            // Prompt redraw often happens right after command-finished (OSC 133;D).
-            // Force a full repaint at that boundary to avoid stale fragments that can
-            // survive PSReadLine list/history redraws on startup and after cls.
-            if (marker === 'D') {
-                scheduleRedrawAfterPtyIdle();
-                setTimeout(function() {
-                    try { term.scrollToBottom(); } catch (e) {}
-                    forceFullRedraw();
-                }, 0);
+            var forward = true;
+
+            if (marker === 'A') { _siPromptStart(); }
+            else if (marker === 'B') { _siCommandStart(); }
+            else if (marker === 'C') { _siCommandExecuted(); }
+            else if (marker === 'D') {
+                forward = _siCommandFinished(rest);
+                if (forward) {
+                    // Prompt redraw often happens right after command-finished (OSC 133;D).
+                    // Force a full repaint at that boundary to avoid stale fragments that can
+                    // survive PSReadLine list/history redraws on startup and after cls.
+                    scheduleRedrawAfterPtyIdle();
+                    setTimeout(function() {
+                        try { term.scrollToBottom(); } catch (e) {}
+                        forceFullRedraw();
+                    }, 0);
+                }
             }
-            window.chrome.webview.postMessage(JSON.stringify({ type: 'osc133', data: marker + (rest ? ':' + rest : '') }));
+
+            if (forward)
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'osc133', data: marker + (rest ? ':' + rest : '') }));
         } catch(e) {}
         return true;
     });
@@ -557,6 +638,7 @@
     };
 
     window.termClear = function() {
+        _siReset();
         term.clear();
         forceFullRedraw();
     };
@@ -837,6 +919,7 @@
                 term.selectAll();
                 break;
             case 'clear':
+                _siReset();
                 term.clear();
                 forceFullRedraw();
                 break;
@@ -913,6 +996,11 @@
     term.onScroll(function() { scheduleMinimapRender(); });
     term.onRender(function() { scheduleMinimapRender(); });
 
+    term.onScroll(function() {
+        if (_siNavAnchor !== null && term.buffer.active.viewportY !== _siNavScrollY)
+            _siNavAnchor = null;
+    });
+
     minimapEl.addEventListener('click', function(e) {
         var rect = minimapEl.getBoundingClientRect();
         var ratio = (e.clientY - rect.top) / rect.height;
@@ -923,6 +1011,55 @@
     // --- CRT toggle ---
     window.termToggleCRT = function(on) {
         document.getElementById('wrap').classList.toggle('crt', !!on);
+    };
+
+    // --- Jump to previous / next command (OSC 133;A prompt markers) ---
+    // Viewport-only: the shell cursor belongs to the PTY and is never moved.
+    function _siScrollToPrompt(line) {
+        var b = term.buffer.active;
+        var target = line - 1;
+        if (target < 0) target = 0;
+        var max = Math.max(0, b.length - term.rows);
+        if (target > max) target = max;
+        term.scrollToLine(target);
+        _siNavAnchor = line;
+        _siNavScrollY = term.buffer.active.viewportY;
+        scheduleRedraw();
+        return true;
+    }
+
+    function _siJump(dir) {
+        _siPrune();
+        if (_siMarkers.length === 0) return false;
+        var b = term.buffer.active;
+        var anchor = (_siNavAnchor !== null) ? _siNavAnchor : b.viewportY + 1;
+        var idx = -1;
+        if (dir < 0) {
+            for (var i = _siMarkers.length - 1; i >= 0; i--) {
+                if (_siMarkers[i].line < anchor) { idx = i; break; }
+            }
+        } else {
+            for (var j = 0; j < _siMarkers.length; j++) {
+                if (_siMarkers[j].line > anchor) { idx = j; break; }
+            }
+        }
+        if (idx < 0) return false;
+        return _siScrollToPrompt(_siMarkers[idx].line);
+    }
+
+    window.termJumpToPreviousCommand = function() { return _siJump(-1); };
+    window.termJumpToNextCommand     = function() { return _siJump(1); };
+    window.termCommandMarkerCount    = function() { _siPrune(); return _siMarkers.length; };
+
+    // --- Relative scrollback scrolling (host-invoked) ---
+    // Lets external tools that can only send classic Win32 scroll input (e.g. a
+    // screenshot tool's WM_VSCROLL-based "scrolling capture" mode, forwarded by the
+    // host window) page through scrollback the same way a real scrollbar would.
+    window.termScrollLines = function(delta) {
+        try { term.scrollLines(delta); } catch (e) {}
+    };
+    window.termScrollPage = function(direction) {
+        try { term.scrollPages(direction); } catch (e) {}
     };
 
     // --- Search all tabs (triggered from host) ---

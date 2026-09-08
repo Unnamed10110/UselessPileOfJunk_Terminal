@@ -32,6 +32,20 @@ public sealed class SessionTreeNode : INotifyPropertyChanged
         }
     }
 
+    private bool _isLive;
+
+    /// <summary>Transient (non-persisted) flag: true when this saved session is currently open as a live tab.</summary>
+    public bool IsLive
+    {
+        get => _isLive;
+        set
+        {
+            if (_isLive == value) return;
+            _isLive = value;
+            OnPropertyChanged();
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

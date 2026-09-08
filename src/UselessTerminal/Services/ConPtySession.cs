@@ -12,13 +12,20 @@ public sealed class ConPtySession : IDisposable
     private nint _processHandle;
     private nint _threadHandle;
     private nint _attributeList;
+    private nint _jobHandle;
     private FileStream? _inputStream;
     private FileStream? _outputStream;
     private CancellationTokenSource? _cts;
     private Task? _readTask;
     private bool _disposed;
     private Dictionary<string, string>? _extraEnv;
+    private readonly object _writeLock = new();
 
+    /// <summary>
+    /// Raised synchronously on the dedicated PTY reader thread. Handlers may block briefly to
+    /// apply backpressure — blocking here stalls the pipe read, which propagates flow control
+    /// back through ConPTY to the shell. Handlers must never block the UI/dispatcher thread from here.
+    /// </summary>
     public event Action<byte[]>? OutputReceived;
     public event Action? ProcessExited;
     public int ProcessId { get; private set; }
@@ -49,7 +56,7 @@ public sealed class ConPtySession : IDisposable
         if (!CreatePipe(out var ptyInRead, out var ptyInWrite, ref secAttr, 0))
             throw new InvalidOperationException($"CreatePipe(in) failed: {Marshal.GetLastWin32Error()}");
 
-        if (!CreatePipe(out var ptyOutRead, out var ptyOutWrite, ref secAttr, 0))
+        if (!CreatePipe(out var ptyOutRead, out var ptyOutWrite, ref secAttr, 64 * 1024))
             throw new InvalidOperationException($"CreatePipe(out) failed: {Marshal.GetLastWin32Error()}");
 
         int hr = CreatePseudoConsole(size, ptyInRead, ptyOutWrite, 0, out _pseudoConsoleHandle);
@@ -63,8 +70,66 @@ public sealed class ConPtySession : IDisposable
         _inputStream = new FileStream(ptyInWrite, FileAccess.Write, bufferSize: 1);
         _outputStream = new FileStream(ptyOutRead, FileAccess.Read, bufferSize: 4096);
 
-        StartProcess(command, workingDirectory);
-        StartReading();
+        CreateJob();
+
+        // The process is created CREATE_SUSPENDED (see StartProcess) so it can be assigned to
+        // the job object before it has a chance to spawn any children of its own. It MUST be
+        // resumed before this method returns on every path (including failure paths that
+        // still managed to create the process) — a suspended shell with no output and no
+        // error is a silent hang bug.
+        try
+        {
+            StartProcess(command, workingDirectory);
+            StartReading();
+        }
+        finally
+        {
+            if (_threadHandle != 0)
+            {
+                uint prevSuspendCount = ResumeThread(_threadHandle);
+                if (prevSuspendCount == 0xFFFFFFFF)
+                {
+                    // The thread is stuck suspended forever. Tear down what we created rather
+                    // than leaking a permanently-suspended zombie process.
+                    if (_jobHandle != 0)
+                    {
+                        TerminateJobObject(_jobHandle, 0);
+                        CloseHandle(_jobHandle);
+                        _jobHandle = 0;
+                    }
+                    if (_processHandle != 0)
+                    {
+                        CloseHandle(_processHandle);
+                        _processHandle = 0;
+                    }
+                    CloseHandle(_threadHandle);
+                    _threadHandle = 0;
+                    throw new InvalidOperationException($"ResumeThread failed: {Marshal.GetLastWin32Error()}");
+                }
+            }
+        }
+    }
+
+    private void CreateJob()
+    {
+        _jobHandle = CreateJobObjectW(0, 0);
+        if (_jobHandle == 0) return; // degrade gracefully — no containment, but no crash either
+
+        var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            BasicLimitInformation = new JOBOBJECT_BASIC_LIMIT_INFORMATION
+            {
+                LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK
+            }
+        };
+
+        if (!SetInformationJobObject(_jobHandle, JobObjectExtendedLimitInformation, ref info,
+                (uint)Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()))
+        {
+            // An unconfigured job with no kill-on-close is worse than none — drop it.
+            CloseHandle(_jobHandle);
+            _jobHandle = 0;
+        }
     }
 
     private void StartProcess(string command, string? workingDirectory)
@@ -97,7 +162,7 @@ public sealed class ConPtySession : IDisposable
 
         if (!CreateProcessW(
                 null, command, 0, 0, false,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
                 envBlock, workingDirectory, ref startupInfo, out var processInfo))
         {
             if (envBlock != 0) Marshal.FreeHGlobal(envBlock);
@@ -109,6 +174,14 @@ public sealed class ConPtySession : IDisposable
         _processHandle = processInfo.hProcess;
         _threadHandle = processInfo.hThread;
         ProcessId = processInfo.dwProcessId;
+
+        if (_jobHandle != 0 && !AssignProcessToJobObject(_jobHandle, _processHandle))
+        {
+            // Degrade gracefully: drop containment, but the process (still suspended) must
+            // still be resumed by the caller — don't throw here.
+            CloseHandle(_jobHandle);
+            _jobHandle = 0;
+        }
     }
 
     private void StartReading()
@@ -117,7 +190,7 @@ public sealed class ConPtySession : IDisposable
 
         _readTask = Task.Factory.StartNew(() =>
         {
-            var buffer = new byte[4096];
+            var buffer = new byte[65536];
             try
             {
                 while (!_cts.IsCancellationRequested)
@@ -142,11 +215,17 @@ public sealed class ConPtySession : IDisposable
 
     public void WriteInput(byte[] data)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_inputStream is null) return;
+        // A late write after disposal quietly no-ops rather than throwing — no caller in this
+        // codebase relies on ObjectDisposedException from here as control flow (verified via
+        // grep across all WriteInput call sites), and the reader/UI threads can race disposal.
+        if (_disposed || _inputStream is null) return;
 
-        _inputStream.Write(data, 0, data.Length);
-        _inputStream.Flush();
+        lock (_writeLock)
+        {
+            if (_disposed || _inputStream is null) return;
+            _inputStream.Write(data, 0, data.Length);
+            _inputStream.Flush();
+        }
     }
 
     public void WriteInput(string text)
@@ -196,7 +275,23 @@ public sealed class ConPtySession : IDisposable
             _pseudoConsoleHandle = 0;
         }
 
-        _inputStream?.Dispose();
+        // Give a well-behaved shell (e.g. PowerShell/PSReadLine) a brief grace period to exit
+        // cleanly now that the pseudo console is closed, before we deterministically kill
+        // whatever process tree remains via the job object.
+        if (_processHandle != 0)
+            WaitForSingleObject(_processHandle, 100);
+
+        if (_jobHandle != 0)
+        {
+            TerminateJobObject(_jobHandle, 0);
+            CloseHandle(_jobHandle);
+            _jobHandle = 0;
+        }
+
+        lock (_writeLock)
+        {
+            _inputStream?.Dispose();
+        }
         _outputStream?.Dispose();
 
         if (_threadHandle != 0) { CloseHandle(_threadHandle); _threadHandle = 0; }

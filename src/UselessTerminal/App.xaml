@@ -33,6 +33,7 @@
             <SolidColorBrush x:Key="Ui.Foreground" Color="#ffffff" />
             <SolidColorBrush x:Key="Ui.ForegroundMuted" Color="#888888" />
             <SolidColorBrush x:Key="Ui.Accent" Color="#6be5ff" />
+            <SolidColorBrush x:Key="Ui.AccentDim" Color="#6be5ff" Opacity="0.14" />
             <SolidColorBrush x:Key="Ui.Highlight" Color="#c47cff" />
             <SolidColorBrush x:Key="Ui.Success" Color="#b4fb00" />
             <SolidColorBrush x:Key="Ui.Warning" Color="#ffef5c" />

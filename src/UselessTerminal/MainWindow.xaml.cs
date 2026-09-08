@@ -114,7 +114,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             string? themeBg = string.IsNullOrWhiteSpace(session.ThemeBackground) ? null : session.ThemeBackground;
             int themeFontSize = session.ThemeFontSize;
             Dictionary<string, string>? envVars = ParseEnvVars(session.EnvironmentVariables);
-            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true, sessionThemeBg: themeBg, sessionFontSize: themeFontSize, extraEnv: envVars);
+            AddTab(session.Name, command, workDir, startCmd, clr, lockTitle: true, sessionThemeBg: themeBg, sessionFontSize: themeFontSize, extraEnv: envVars, sessionId: session.Id);
         };
 
         SessionPanel.SnippetTriggered += cmd =>
@@ -217,12 +217,39 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
         const int WM_HOTKEY = 0x0312;
+        const int WM_VSCROLL = 0x0115;
         if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_QUAKE)
         {
             ToggleQuakeMode();
             handled = true;
         }
+        else if (msg == WM_VSCROLL)
+        {
+            // Classic Win32 scroll-bar message. This window has no native scrollbar, but
+            // some external tools drive scrolling by posting this directly to a window's
+            // handle instead of sending a real mouse wheel/keyboard event — notably
+            // ShareX's "scrolling capture" feature in its Windows-message scroll mode.
+            // Forward it to the focused terminal pane so those tools can page through
+            // scrollback like they would any other scrollable window.
+            int scrollCommand = (int)(wParam.ToInt64() & 0xFFFF); // low word = SB_* command
+            if (ScrollFocusedPane(scrollCommand)) handled = true;
+        }
         return nint.Zero;
+    }
+
+    // SB_LINEUP=0, SB_LINEDOWN=1, SB_PAGEUP=2, SB_PAGEDOWN=3 (standard Win32 scroll-bar commands).
+    private bool ScrollFocusedPane(int scrollCommand)
+    {
+        var pane = _activeTab?.FocusedPane ?? _activeTab?.Control;
+        if (pane is null) return false;
+        switch (scrollCommand)
+        {
+            case 0: pane.ExecuteScript("try{window.termScrollLines&&window.termScrollLines(-1);}catch(e){}"); return true;
+            case 1: pane.ExecuteScript("try{window.termScrollLines&&window.termScrollLines(1);}catch(e){}"); return true;
+            case 2: pane.ExecuteScript("try{window.termScrollPage&&window.termScrollPage(-1);}catch(e){}"); return true;
+            case 3: pane.ExecuteScript("try{window.termScrollPage&&window.termScrollPage(1);}catch(e){}"); return true;
+            default: return false;
+        }
     }
 
     private void ToggleQuakeMode()
@@ -305,6 +332,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         }
         else if (kb.Matches("movePaneFocus", ctrl, shift, alt, key))
         { MovePaneFocus(key); e.Handled = true; }
+        else if (kb.Matches("prevCommand", ctrl, shift, alt, key))
+        { JumpToCommandMarker(true); e.Handled = true; }
+        else if (kb.Matches("nextCommand", ctrl, shift, alt, key))
+        { JumpToCommandMarker(false); e.Handled = true; }
         else if (kb.Matches("newSession", ctrl, shift, alt, key))
         { SessionPanel.TriggerAddSession(); e.Handled = true; }
         else if (kb.Matches("settings", ctrl, shift, alt, key))
@@ -317,6 +348,14 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         { ToggleBrowserPanel(); e.Handled = true; }
         else if (kb.Matches("commandPalette", ctrl, shift, alt, key))
         { ShowCommandPalette(); e.Handled = true; }
+    }
+
+    private void JumpToCommandMarker(bool previous)
+    {
+        var pane = _activeTab?.FocusedPane ?? _activeTab?.Control;
+        pane?.ExecuteScript(previous
+            ? "try{window.termJumpToPreviousCommand&&window.termJumpToPreviousCommand();}catch(e){}"
+            : "try{window.termJumpToNextCommand&&window.termJumpToNextCommand();}catch(e){}");
     }
 
     private void MovePaneFocus(Key direction)
@@ -436,7 +475,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
     // --- Tab Management ---
 
-    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false, string? sessionThemeBg = null, int sessionFontSize = 0, Dictionary<string, string>? extraEnv = null)
+    public void AddTab(string title, string command, string? workingDirectory = null, string? startingCommand = null, string? color = null, bool lockTitle = false, string? sessionThemeBg = null, int sessionFontSize = 0, Dictionary<string, string>? extraEnv = null, string? sessionId = null)
     {
         var container = new Grid { Visibility = Visibility.Collapsed };
         var termControl = new TerminalControl();
@@ -456,7 +495,8 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             StartingCommand = startingCommand,
             Control = termControl,
             Container = container,
-            Renamed = lockTitle
+            Renamed = lockTitle,
+            SessionId = sessionId
         };
 
         var tabItem = new TabItem
@@ -506,12 +546,18 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
 
         termControl.ShellIntegrationEvent += marker => Dispatcher.InvokeAsync(() =>
         {
-            if (marker.StartsWith("D"))
-            {
-                string code = marker.Length > 2 ? marker[2..] : "";
-                tabState.LastExitCode = code;
-                if (_activeTab == tabState) RefreshStatusBar();
-            }
+            if (string.IsNullOrEmpty(marker) || marker[0] != 'D') return;
+            // Bare "D" means the command finished with no exit code available (nothing ran,
+            // e.g. an empty Enter/Ctrl+C, or cmd.exe which cannot report one) - keep whatever
+            // value was already shown rather than blanking the status bar.
+            if (marker.Length <= 2) return;
+            string code = marker[2..];
+            int semi = code.IndexOf(';');   // tolerate "D;0;extra" payloads from some themes
+            if (semi >= 0) code = code[..semi];
+            code = code.Trim();
+            if (!int.TryParse(code, out _)) return;   // ignore non-numeric payloads
+            tabState.LastExitCode = code;
+            if (_activeTab == tabState) RefreshStatusBar();
         });
 
         termControl.SearchAllTabsRequested += query => Dispatcher.InvokeAsync(() =>
@@ -547,6 +593,10 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         foreach (var tab in _tabs)
             UpdateTabHeader(tab);
     }
+
+    /// <summary>Session ids that are currently open as live tabs, for the sidebar's "is this session open" indicator.</summary>
+    public HashSet<string> GetLiveSessionIds() =>
+        _tabs.Select(t => t.SessionId).Where(id => !string.IsNullOrEmpty(id)).ToHashSet()!;
 
     private void ScheduleTabOutputNotify(TerminalTabState tabState)
     {
@@ -1001,20 +1051,22 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
         var s = SettingsStore.Instance.Current;
         var tabFg = ParseHexColor(s.UiTabForeground);
         var selBg = ParseHexColor(s.UiTabSelectedBackground);
-        var selFg = ParseHexColor(s.UiTabSelectedForeground);
 
         if (selected)
         {
+            // The active tab's actual visible fill is the template's IsSelected trigger
+            // (a subtle dark accent tint, not a bright solid color), so it always needs
+            // the light foreground - the old dark-on-bright contrast pairing no longer
+            // matches what's actually rendered and made the tab title unreadable.
+            tab.TabItem.Foreground = new SolidColorBrush(tabFg);
             if (string.IsNullOrEmpty(tab.HighlightColor))
             {
                 tab.TabItem.Background = new SolidColorBrush(selBg);
-                tab.TabItem.Foreground = new SolidColorBrush(selFg);
             }
             else
             {
                 var color = ParseHexColor(tab.HighlightColor);
                 tab.TabItem.Background = new SolidColorBrush(color);
-                tab.TabItem.Foreground = new SolidColorBrush(ParseHexColor(ThemePresets.ContrastFg(tab.HighlightColor)));
             }
         }
         else if (string.IsNullOrEmpty(tab.HighlightColor))
@@ -1046,6 +1098,13 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             tabBorder.BorderBrush = Brushes.Transparent;
         else
             tabBorder.BorderBrush = new SolidColorBrush(ParseHexColor(tab.HighlightColor)) { Opacity = 0.5 };
+
+        if (FindNamedChild<System.Windows.Shapes.Ellipse>(tab.TabItem, "ColorDot") is { } colorDot)
+        {
+            colorDot.Fill = string.IsNullOrEmpty(tab.HighlightColor)
+                ? Brushes.Transparent
+                : new SolidColorBrush(ParseHexColor(tab.HighlightColor));
+        }
     }
 
     private void SplitTab(TerminalTabState tab, Orientation orientation)
@@ -2117,7 +2176,7 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
             string cwd = pane.CurrentWorkingDirectory
                 ?? _activeTab.WorkingDirectory
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            StatusCwd.Text = "\uD83D\uDCC2 " + cwd;
+            StatusCwd.Text = cwd;
 
             string branch = GetGitBranch(cwd);
             StatusGitBranch.Text = branch;
@@ -2159,9 +2218,9 @@ public partial class MainWindow : FluentWindow, INotifyPropertyChanged
                     string head = File.ReadAllText(headPath).Trim();
                     const string prefix = "ref: refs/heads/";
                     if (head.StartsWith(prefix))
-                        return "\uE8CB " + head[prefix.Length..];
+                        return head[prefix.Length..];
                     if (head.Length >= 8)
-                        return "\uE8CB " + head[..8];
+                        return head[..8];
                     return "";
                 }
                 dir = dir.Parent;
@@ -2187,6 +2246,7 @@ internal sealed class TerminalTabState
     public bool Started { get; set; }
     public bool Renamed { get; set; }
     public string HighlightColor { get; set; } = "";
+    public string? SessionId { get; set; }
     public bool Pinned { get; set; }
     public bool HasActivity { get; set; }
     public bool BroadcastInput { get; set; }
