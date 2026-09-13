@@ -1,0 +1,500 @@
+{
+  "UselessTerminal.sln": {
+    "mtime": 1788783087.255498,
+    "seen": 1788784435.7077696,
+    "ast_hash": "2a3af4a4bfee9dca268c39be0dc5ae53",
+    "semantic_hash": "2a3af4a4bfee9dca268c39be0dc5ae53"
+  },
+  "global.json": {
+    "mtime": 1788783087.3374457,
+    "seen": 1788784435.7077744,
+    "ast_hash": "97ab1f0e0c591b760ffab62ab61c2ffb",
+    "semantic_hash": "97ab1f0e0c591b760ffab62ab61c2ffb"
+  },
+  "scripts/Build-Installer.ps1": {
+    "mtime": 1788783087.341254,
+    "seen": 1788784435.707777,
+    "ast_hash": "abe77298c7b1f4c195db90064d927eb2",
+    "semantic_hash": "abe77298c7b1f4c195db90064d927eb2"
+  },
+  "src/UselessTerminal/App.xaml": {
+    "mtime": 1788783087.345595,
+    "seen": 1788784435.7077782,
+    "ast_hash": "c293fa2ef886e85faa63897c0c59158f",
+    "semantic_hash": "c293fa2ef886e85faa63897c0c59158f"
+  },
+  "src/UselessTerminal/App.xaml.cs": {
+    "mtime": 1788783087.3479626,
+    "seen": 1788784435.7077796,
+    "ast_hash": "497be7dab4914fb2d84133a3c9813458",
+    "semantic_hash": "497be7dab4914fb2d84133a3c9813458"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-fit.min.js": {
+    "mtime": 1788783087.3609424,
+    "seen": 1788784435.7077806,
+    "ast_hash": "26a74b2a8d070a7effd418ad9f0cdb87",
+    "semantic_hash": "26a74b2a8d070a7effd418ad9f0cdb87"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-image.min.js": {
+    "mtime": 1788783087.3622131,
+    "seen": 1788784435.7077816,
+    "ast_hash": "180269ef97b860415d3cfa89feda74ae",
+    "semantic_hash": "180269ef97b860415d3cfa89feda74ae"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-search.min.js": {
+    "mtime": 1788783087.3632214,
+    "seen": 1788784435.707783,
+    "ast_hash": "7d402daf728da76b2c7b4ba9e80d750e",
+    "semantic_hash": "7d402daf728da76b2c7b4ba9e80d750e"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-unicode11.min.js": {
+    "mtime": 1788783087.3663316,
+    "seen": 1788784435.7077837,
+    "ast_hash": "cdd0ad8cb06c1a7873d931e0411b020b",
+    "semantic_hash": "cdd0ad8cb06c1a7873d931e0411b020b"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-web-links.min.js": {
+    "mtime": 1788783087.3693395,
+    "seen": 1788784435.707785,
+    "ast_hash": "55f649ae38758c1766cdaa3969648ab2",
+    "semantic_hash": "55f649ae38758c1766cdaa3969648ab2"
+  },
+  "src/UselessTerminal/Assets/xterm-addon-webgl.min.js": {
+    "mtime": 1788783087.3723395,
+    "seen": 1788784435.707786,
+    "ast_hash": "e8b7a266c1f07f820177c4329521da5d",
+    "semantic_hash": "e8b7a266c1f07f820177c4329521da5d"
+  },
+  "src/UselessTerminal/Assets/xterm.min.js": {
+    "mtime": 1788783087.3800945,
+    "seen": 1788784435.707787,
+    "ast_hash": "046fc1281533f609c1e51925e54608c7",
+    "semantic_hash": "046fc1281533f609c1e51925e54608c7"
+  },
+  "src/UselessTerminal/Controls/BrowserPanel.xaml": {
+    "mtime": 1788783087.389648,
+    "seen": 1788784435.7077882,
+    "ast_hash": "added96c691c4feb45af6a05d6017268",
+    "semantic_hash": "added96c691c4feb45af6a05d6017268"
+  },
+  "src/UselessTerminal/Controls/BrowserPanel.xaml.cs": {
+    "mtime": 1788783087.3926072,
+    "seen": 1788784435.7077894,
+    "ast_hash": "be8e6a1c7e10fd6959968043805a8287",
+    "semantic_hash": "be8e6a1c7e10fd6959968043805a8287"
+  },
+  "src/UselessTerminal/Controls/CommandPaletteDialog.xaml": {
+    "mtime": 1788783087.39632,
+    "seen": 1788784435.7077901,
+    "ast_hash": "5b04e28767ae97eee368b124645fb9da",
+    "semantic_hash": "5b04e28767ae97eee368b124645fb9da"
+  },
+  "src/UselessTerminal/Controls/CommandPaletteDialog.xaml.cs": {
+    "mtime": 1788783087.3984797,
+    "seen": 1788784435.707791,
+    "ast_hash": "a9562a9808a74bee3763e29f7ac3f0e4",
+    "semantic_hash": "a9562a9808a74bee3763e29f7ac3f0e4"
+  },
+  "src/UselessTerminal/Controls/FileConflictDialog.xaml": {
+    "mtime": 1788783087.3998528,
+    "seen": 1788784435.707792,
+    "ast_hash": "b13eb7f91d0bb22bfffbb4219fdea920",
+    "semantic_hash": "b13eb7f91d0bb22bfffbb4219fdea920"
+  },
+  "src/UselessTerminal/Controls/FileConflictDialog.xaml.cs": {
+    "mtime": 1788783087.4040124,
+    "seen": 1788784435.7077932,
+    "ast_hash": "7cccea6fb41a3d3b488f14129f49dcdc",
+    "semantic_hash": "7cccea6fb41a3d3b488f14129f49dcdc"
+  },
+  "src/UselessTerminal/Controls/RenameDialog.xaml": {
+    "mtime": 1788783087.406409,
+    "seen": 1788784435.7077942,
+    "ast_hash": "39529a66fb5dea3a144bd1dd98cf7fc8",
+    "semantic_hash": "39529a66fb5dea3a144bd1dd98cf7fc8"
+  },
+  "src/UselessTerminal/Controls/RenameDialog.xaml.cs": {
+    "mtime": 1788783087.4079943,
+    "seen": 1788784435.7077951,
+    "ast_hash": "f9ceeb91530ac22ad1dde8d39415818f",
+    "semantic_hash": "f9ceeb91530ac22ad1dde8d39415818f"
+  },
+  "src/UselessTerminal/Controls/SessionEditDialog.xaml": {
+    "mtime": 1788783087.4091895,
+    "seen": 1788784435.7077963,
+    "ast_hash": "a29a505960291f0b17ff0c43fd69edb2",
+    "semantic_hash": "a29a505960291f0b17ff0c43fd69edb2"
+  },
+  "src/UselessTerminal/Controls/SessionEditDialog.xaml.cs": {
+    "mtime": 1788783087.4103723,
+    "seen": 1788784435.707797,
+    "ast_hash": "77ae049bec55b641e2e286a7055231a2",
+    "semantic_hash": "77ae049bec55b641e2e286a7055231a2"
+  },
+  "src/UselessTerminal/Controls/SessionPanel.xaml": {
+    "mtime": 1788783087.4116073,
+    "seen": 1788784435.7077985,
+    "ast_hash": "48714ad87bddbfbdefa187e22a271312",
+    "semantic_hash": "48714ad87bddbfbdefa187e22a271312"
+  },
+  "src/UselessTerminal/Controls/SessionPanel.xaml.cs": {
+    "mtime": 1788783087.4144335,
+    "seen": 1788784435.7077994,
+    "ast_hash": "9a773c1ef081de9e8267534a13025e8a",
+    "semantic_hash": "9a773c1ef081de9e8267534a13025e8a"
+  },
+  "src/UselessTerminal/Controls/SessionTreeNode.cs": {
+    "mtime": 1788783087.4178507,
+    "seen": 1788784435.7078004,
+    "ast_hash": "0138431422d9c2d6325459b0fcffa82c",
+    "semantic_hash": "0138431422d9c2d6325459b0fcffa82c"
+  },
+  "src/UselessTerminal/Controls/SettingsWindow.xaml": {
+    "mtime": 1788783087.4209418,
+    "seen": 1788784435.7078013,
+    "ast_hash": "b2838f6e20d82ea4b459e670acee93fe",
+    "semantic_hash": "b2838f6e20d82ea4b459e670acee93fe"
+  },
+  "src/UselessTerminal/Controls/SettingsWindow.xaml.cs": {
+    "mtime": 1788783087.4221191,
+    "seen": 1788784435.7078023,
+    "ast_hash": "dd229a7e547ad0a0c06480a51059936b",
+    "semantic_hash": "dd229a7e547ad0a0c06480a51059936b"
+  },
+  "src/UselessTerminal/Controls/TerminalControl.xaml": {
+    "mtime": 1788783087.424343,
+    "seen": 1788784435.7078035,
+    "ast_hash": "f6fff27329823a3b94d7226ccb4b85fb",
+    "semantic_hash": "f6fff27329823a3b94d7226ccb4b85fb"
+  },
+  "src/UselessTerminal/Controls/TerminalControl.xaml.cs": {
+    "mtime": 1788783087.4255824,
+    "seen": 1788784435.7078044,
+    "ast_hash": "a6b6a95b3604b49bd69edc9f459444d9",
+    "semantic_hash": "a6b6a95b3604b49bd69edc9f459444d9"
+  },
+  "src/UselessTerminal/Converters/HexColorConverter.cs": {
+    "mtime": 1788783087.4281626,
+    "seen": 1788784435.7078054,
+    "ast_hash": "be02115b05d2d8c1f0b9f82a45794866",
+    "semantic_hash": "be02115b05d2d8c1f0b9f82a45794866"
+  },
+  "src/UselessTerminal/Converters/SavedSessionShellIconConverter.cs": {
+    "mtime": 1788783087.430095,
+    "seen": 1788784435.707806,
+    "ast_hash": "4af954cf38e3b1b1c45b25abe182993a",
+    "semantic_hash": "4af954cf38e3b1b1c45b25abe182993a"
+  },
+  "src/UselessTerminal/Converters/TreeViewItemHeaderMaxWidthConverter.cs": {
+    "mtime": 1788783087.431733,
+    "seen": 1788784435.7078073,
+    "ast_hash": "70805d603fca728da3be6640a1f04d78",
+    "semantic_hash": "70805d603fca728da3be6640a1f04d78"
+  },
+  "src/UselessTerminal/Interop/NativeMethods.cs": {
+    "mtime": 1788783087.4350388,
+    "seen": 1788784435.7078083,
+    "ast_hash": "ef81f01bd88453ac411bd6e0efc269d7",
+    "semantic_hash": "ef81f01bd88453ac411bd6e0efc269d7"
+  },
+  "src/UselessTerminal/MainWindow.xaml": {
+    "mtime": 1788783087.4362948,
+    "seen": 1788784435.7078092,
+    "ast_hash": "d7d033f8f551d347d47c2d5825c1a9be",
+    "semantic_hash": "d7d033f8f551d347d47c2d5825c1a9be"
+  },
+  "src/UselessTerminal/MainWindow.xaml.cs": {
+    "mtime": 1788783087.4392126,
+    "seen": 1788784435.7078104,
+    "ast_hash": "f8e065d21108f26a822681354d0ed892",
+    "semantic_hash": "f8e065d21108f26a822681354d0ed892"
+  },
+  "src/UselessTerminal/Models/AppSettings.cs": {
+    "mtime": 1788783087.441661,
+    "seen": 1788784435.7078114,
+    "ast_hash": "ca749eb1af86930ec97f1e860371f3ff",
+    "semantic_hash": "ca749eb1af86930ec97f1e860371f3ff"
+  },
+  "src/UselessTerminal/Models/AppSettingsLegacyMigration.cs": {
+    "mtime": 1788783087.4436083,
+    "seen": 1788784435.7078123,
+    "ast_hash": "ac5b2aeb21a16d5d67a380b69cbac89f",
+    "semantic_hash": "ac5b2aeb21a16d5d67a380b69cbac89f"
+  },
+  "src/UselessTerminal/Models/KeyBindingConfig.cs": {
+    "mtime": 1788783087.4447458,
+    "seen": 1788784435.7078133,
+    "ast_hash": "2f324011339adb3b282efc504a4ab7f2",
+    "semantic_hash": "2f324011339adb3b282efc504a4ab7f2"
+  },
+  "src/UselessTerminal/Models/SavedSession.cs": {
+    "mtime": 1788783087.4481766,
+    "seen": 1788784435.7078145,
+    "ast_hash": "9a3124145e94d22888858633112c21f5",
+    "semantic_hash": "9a3124145e94d22888858633112c21f5"
+  },
+  "src/UselessTerminal/Models/SessionFolder.cs": {
+    "mtime": 1788783087.4491835,
+    "seen": 1788784435.7078154,
+    "ast_hash": "7736d1f8821711dfa6402c1a37eff2d4",
+    "semantic_hash": "7736d1f8821711dfa6402c1a37eff2d4"
+  },
+  "src/UselessTerminal/Models/ShellProfile.cs": {
+    "mtime": 1788783087.4512956,
+    "seen": 1788784435.7078187,
+    "ast_hash": "7294ab1d68cd7d0cc058d7270110af92",
+    "semantic_hash": "7294ab1d68cd7d0cc058d7270110af92"
+  },
+  "src/UselessTerminal/Models/Snippet.cs": {
+    "mtime": 1788783087.4522932,
+    "seen": 1788784435.7078197,
+    "ast_hash": "09d031d18f75bb1feb36dc6c4024ff2a",
+    "semantic_hash": "09d031d18f75bb1feb36dc6c4024ff2a"
+  },
+  "src/UselessTerminal/Models/TerminalTab.cs": {
+    "mtime": 1788783087.4544535,
+    "seen": 1788784435.707821,
+    "ast_hash": "27e927feb4e3d77cedb8c30131811f3b",
+    "semantic_hash": "27e927feb4e3d77cedb8c30131811f3b"
+  },
+  "src/UselessTerminal/Models/ThemePresets.cs": {
+    "mtime": 1788783087.4569333,
+    "seen": 1788784435.707822,
+    "ast_hash": "eea68803828fb5d2cf47221f1db04680",
+    "semantic_hash": "eea68803828fb5d2cf47221f1db04680"
+  },
+  "src/UselessTerminal/Models/WindowState.cs": {
+    "mtime": 1788783087.4592373,
+    "seen": 1788784435.707823,
+    "ast_hash": "c114eaf0cff0ac6634e1061715f6dcbd",
+    "semantic_hash": "c114eaf0cff0ac6634e1061715f6dcbd"
+  },
+  "src/UselessTerminal/Models/WorkspaceProfile.cs": {
+    "mtime": 1788783087.4614222,
+    "seen": 1788784435.7078242,
+    "ast_hash": "2245812b6a436e58d926d2a50614d477",
+    "semantic_hash": "2245812b6a436e58d926d2a50614d477"
+  },
+  "src/UselessTerminal/Services/AsciicastRecorder.cs": {
+    "mtime": 1788783087.4646616,
+    "seen": 1788784435.707825,
+    "ast_hash": "be1635a29efb9aad44d354313e8f8f70",
+    "semantic_hash": "be1635a29efb9aad44d354313e8f8f70"
+  },
+  "src/UselessTerminal/Services/CommandNotifier.cs": {
+    "mtime": 1788783087.4675071,
+    "seen": 1788784435.7078261,
+    "ast_hash": "98de4d3e7c4c3a7affabe6abfb080b33",
+    "semantic_hash": "98de4d3e7c4c3a7affabe6abfb080b33"
+  },
+  "src/UselessTerminal/Services/ConPtySession.cs": {
+    "mtime": 1788783087.4695065,
+    "seen": 1788784435.707827,
+    "ast_hash": "bb952687d0db7ff058affdaabc8405d6",
+    "semantic_hash": "bb952687d0db7ff058affdaabc8405d6"
+  },
+  "src/UselessTerminal/Services/ElevatedShellLauncher.cs": {
+    "mtime": 1788783087.4739418,
+    "seen": 1788784435.707828,
+    "ast_hash": "749dfe48fa313e0693530cf4a15b34bc",
+    "semantic_hash": "749dfe48fa313e0693530cf4a15b34bc"
+  },
+  "src/UselessTerminal/Services/ElevationHelper.cs": {
+    "mtime": 1788783087.4772663,
+    "seen": 1788784435.707829,
+    "ast_hash": "8a29d91665a69afb86f05461a18ecee5",
+    "semantic_hash": "8a29d91665a69afb86f05461a18ecee5"
+  },
+  "src/UselessTerminal/Services/ProcessCommandLines.cs": {
+    "mtime": 1788783087.4796836,
+    "seen": 1788784435.70783,
+    "ast_hash": "36b43559d1562521c517664cae9b4596",
+    "semantic_hash": "36b43559d1562521c517664cae9b4596"
+  },
+  "src/UselessTerminal/Services/SessionStore.cs": {
+    "mtime": 1788783087.4817395,
+    "seen": 1788784435.7078311,
+    "ast_hash": "c33a57b3be9ce1fb315235ff8e88f529",
+    "semantic_hash": "c33a57b3be9ce1fb315235ff8e88f529"
+  },
+  "src/UselessTerminal/Services/SettingsStore.cs": {
+    "mtime": 1788783087.4822457,
+    "seen": 1788784435.707832,
+    "ast_hash": "482c2c3211585249d45989185b3752fe",
+    "semantic_hash": "482c2c3211585249d45989185b3752fe"
+  },
+  "src/UselessTerminal/Services/ShellDetector.cs": {
+    "mtime": 1788783087.4874434,
+    "seen": 1788784435.707833,
+    "ast_hash": "8c41ec06edd2737c9f4bd5c3298ae30d",
+    "semantic_hash": "8c41ec06edd2737c9f4bd5c3298ae30d"
+  },
+  "src/UselessTerminal/Services/ShellFileDrop.cs": {
+    "mtime": 1788783087.4896393,
+    "seen": 1788784435.707834,
+    "ast_hash": "13ca50f77c79bf7b9fb2ff8aa141e075",
+    "semantic_hash": "13ca50f77c79bf7b9fb2ff8aa141e075"
+  },
+  "src/UselessTerminal/Services/ShellGlyphResolver.cs": {
+    "mtime": 1788783087.4922695,
+    "seen": 1788784435.7078352,
+    "ast_hash": "d09dc398afb307ea4c453df3c7d250e1",
+    "semantic_hash": "d09dc398afb307ea4c453df3c7d250e1"
+  },
+  "src/UselessTerminal/Services/ShellIconLoader.cs": {
+    "mtime": 1788783087.498583,
+    "seen": 1788784435.7078362,
+    "ast_hash": "e6a613d07c04de79f47e967f695ebe71",
+    "semantic_hash": "e6a613d07c04de79f47e967f695ebe71"
+  },
+  "src/UselessTerminal/Services/SnippetStore.cs": {
+    "mtime": 1788783087.5024047,
+    "seen": 1788784435.707837,
+    "ast_hash": "3d10c82f693fc7585934c8113c2ca647",
+    "semantic_hash": "3d10c82f693fc7585934c8113c2ca647"
+  },
+  "src/UselessTerminal/Services/SshConfigImporter.cs": {
+    "mtime": 1788783087.5057018,
+    "seen": 1788784435.7078383,
+    "ast_hash": "df835dc5b1fa5fcaa046dfe547876ac0",
+    "semantic_hash": "df835dc5b1fa5fcaa046dfe547876ac0"
+  },
+  "src/UselessTerminal/Services/SshConnection.cs": {
+    "mtime": 1788783087.5069633,
+    "seen": 1788784435.707839,
+    "ast_hash": "a809057423f2d31ccc6c21cb465babd0",
+    "semantic_hash": "a809057423f2d31ccc6c21cb465babd0"
+  },
+  "src/UselessTerminal/Services/SshFileDrop.cs": {
+    "mtime": 1788783087.5143762,
+    "seen": 1788784435.70784,
+    "ast_hash": "495f24bb8f93750d57f15e7734e48eac",
+    "semantic_hash": "495f24bb8f93750d57f15e7734e48eac"
+  },
+  "src/UselessTerminal/Services/TerminalLogger.cs": {
+    "mtime": 1788783087.5161264,
+    "seen": 1788784435.707841,
+    "ast_hash": "5477c7afa2ea5cfad65e338c8a144872",
+    "semantic_hash": "5477c7afa2ea5cfad65e338c8a144872"
+  },
+  "src/UselessTerminal/Services/UiChrome.cs": {
+    "mtime": 1788783087.5183,
+    "seen": 1788784435.707842,
+    "ast_hash": "60b86c954014c99ea93b9a00f326b402",
+    "semantic_hash": "60b86c954014c99ea93b9a00f326b402"
+  },
+  "src/UselessTerminal/Services/WindowStateStore.cs": {
+    "mtime": 1788783087.519308,
+    "seen": 1788784435.707843,
+    "ast_hash": "eab414e83af32999bc6eff7a3d98ebef",
+    "semantic_hash": "eab414e83af32999bc6eff7a3d98ebef"
+  },
+  "src/UselessTerminal/Services/WorkspaceStore.cs": {
+    "mtime": 1788783087.5207393,
+    "seen": 1788784435.7078438,
+    "ast_hash": "7fde8018fe66aafb9e32ed7f16dd3f98",
+    "semantic_hash": "7fde8018fe66aafb9e32ed7f16dd3f98"
+  },
+  "src/UselessTerminal/Services/WtProfileImporter.cs": {
+    "mtime": 1788783087.5226786,
+    "seen": 1788784435.707845,
+    "ast_hash": "547d77dda89966cf57d6d9434cc81ea5",
+    "semantic_hash": "547d77dda89966cf57d6d9434cc81ea5"
+  },
+  "src/UselessTerminal/UselessTerminal.csproj": {
+    "mtime": 1788783087.5254714,
+    "seen": 1788784435.707846,
+    "ast_hash": "06e9bf6f115de1639b14b4e2df8dacb6",
+    "semantic_hash": "06e9bf6f115de1639b14b4e2df8dacb6"
+  },
+  "README.md": {
+    "mtime": 1788783087.2488172,
+    "seen": 1788784435.7078469,
+    "ast_hash": "9bf0d6ed6db26983220b2cf2647f745a",
+    "semantic_hash": "9bf0d6ed6db26983220b2cf2647f745a"
+  },
+  "src/UselessTerminal/Assets/terminal.html": {
+    "mtime": 1788783087.358941,
+    "seen": 1788784435.7078478,
+    "ast_hash": "4ec823fc81746645b53e1ab9039bb9d3",
+    "semantic_hash": "4ec823fc81746645b53e1ab9039bb9d3"
+  },
+  "IpCwQaZuE6.png": {
+    "mtime": 1788783087.244849,
+    "seen": 1788784435.707849,
+    "ast_hash": "bbd926424206c73c56bd4bf8bc17b357",
+    "semantic_hash": "bbd926424206c73c56bd4bf8bc17b357"
+  },
+  "UselessTerminal_04_04_2026_16_09_09.png": {
+    "mtime": 1788783087.263695,
+    "seen": 1788784435.70785,
+    "ast_hash": "96b847573708c3ea582803580083c878",
+    "semantic_hash": "96b847573708c3ea582803580083c878"
+  },
+  "UselessTerminal_04_04_2026_16_11_45.gif": {
+    "mtime": 1788783087.2688506,
+    "seen": 1788784435.707851,
+    "ast_hash": "c411b0c20fcbae64b533cbdfd19f6376",
+    "semantic_hash": "c411b0c20fcbae64b533cbdfd19f6376"
+  },
+  "UselessTerminal_04_04_2026_16_12_57.png": {
+    "mtime": 1788783087.277824,
+    "seen": 1788784435.7078521,
+    "ast_hash": "b83d5848d30a8bcc07e83daa9a4bfb7c",
+    "semantic_hash": "b83d5848d30a8bcc07e83daa9a4bfb7c"
+  },
+  "UselessTerminal_04_04_2026_16_14_14.png": {
+    "mtime": 1788783087.2821176,
+    "seen": 1788784435.707853,
+    "ast_hash": "ae3a7e59d9ede9e7c3404a9faba85c56",
+    "semantic_hash": "ae3a7e59d9ede9e7c3404a9faba85c56"
+  },
+  "UselessTerminal_04_04_2026_16_16_59.gif": {
+    "mtime": 1788783087.2968018,
+    "seen": 1788784435.707854,
+    "ast_hash": "17c8d7f44aea3a3ba7c7094716af8701",
+    "semantic_hash": "17c8d7f44aea3a3ba7c7094716af8701"
+  },
+  "UselessTerminal_04_04_2026_16_25_48.gif": {
+    "mtime": 1788783087.3121004,
+    "seen": 1788784435.707855,
+    "ast_hash": "1af160db7b0611423c5dfde6dfe94226",
+    "semantic_hash": "1af160db7b0611423c5dfde6dfe94226"
+  },
+  "UselessTerminal_05_04_2026_03_47_50.gif": {
+    "mtime": 1788783087.3242075,
+    "seen": 1788784435.7078562,
+    "ast_hash": "e0de539c2a59b801ebc796c0f05fc517",
+    "semantic_hash": "e0de539c2a59b801ebc796c0f05fc517"
+  },
+  "UselessTerminal_05_04_2026_07_13_38.png": {
+    "mtime": 1788783087.328185,
+    "seen": 1788784435.7078571,
+    "ast_hash": "273dc1553031a341e744b24432d0ac02",
+    "semantic_hash": "273dc1553031a341e744b24432d0ac02"
+  },
+  "_extracted_from_exe.png": {
+    "mtime": 1788783087.3301456,
+    "seen": 1788784435.707858,
+    "ast_hash": "1d37c5af02c8519b4d72859b0c3ceeb5",
+    "semantic_hash": "1d37c5af02c8519b4d72859b0c3ceeb5"
+  },
+  "_from_assets_ico.png": {
+    "mtime": 1788783087.332055,
+    "seen": 1788784435.7078593,
+    "ast_hash": "1d37c5af02c8519b4d72859b0c3ceeb5",
+    "semantic_hash": "1d37c5af02c8519b4d72859b0c3ceeb5"
+  },
+  "_from_exe.png": {
+    "mtime": 1788783087.333016,
+    "seen": 1788784435.7078602,
+    "ast_hash": "1d37c5af02c8519b4d72859b0c3ceeb5",
+    "semantic_hash": "1d37c5af02c8519b4d72859b0c3ceeb5"
+  },
+  "src/UselessTerminal/Assets/app.png": {
+    "mtime": 1788783087.3536313,
+    "seen": 1788784435.7078612,
+    "ast_hash": "5dd95eedfa0188a77914ce72c51e1d63",
+    "semantic_hash": "5dd95eedfa0188a77914ce72c51e1d63"
+  }
+}

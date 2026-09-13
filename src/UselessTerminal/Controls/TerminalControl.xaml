@@ -4,19 +4,51 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
 
-    <Grid Background="#000000">
+    <Grid Background="{DynamicResource Ui.TerminalBackground}"
+          AllowDrop="True"
+          PreviewDragOver="Terminal_PreviewDragOver"
+          PreviewDragLeave="Terminal_PreviewDragLeave"
+          Drop="Terminal_Drop">
         <wv2:WebView2
             x:Name="WebView"
-            DefaultBackgroundColor="Black" />
+            DefaultBackgroundColor="Black"
+            UseLayoutRounding="True"
+            SnapsToDevicePixels="True" />
         <Border x:Name="FocusBorder"
                 BorderThickness="1"
                 BorderBrush="Transparent"
                 IsHitTestVisible="False" />
         <Border x:Name="DimOverlay"
-                Background="#000000"
+                Background="{DynamicResource Ui.ChromeBackground}"
                 Opacity="0.5"
                 Visibility="Collapsed"
                 IsHitTestVisible="False" />
+        <Border x:Name="FileDropOverlay"
+                Background="#CC000000"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <Border x:Name="FileDropCard"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MaxWidth="560" Margin="24"
+                    Background="#E60a0a0a"
+                    BorderBrush="{DynamicResource Ui.Accent}"
+                    BorderThickness="2" CornerRadius="10"
+                    Padding="22,18">
+                <StackPanel>
+                    <TextBlock x:Name="FileDropTitle"
+                               FontSize="18" FontWeight="Bold"
+                               Foreground="{DynamicResource Ui.Accent}"
+                               TextAlignment="Center" TextWrapping="Wrap"
+                               Text="Drop to copy" />
+                    <TextBlock x:Name="FileDropLabel"
+                               Margin="0,8,0,0"
+                               FontSize="13"
+                               Foreground="#e5e5e5"
+                               TextAlignment="Center" TextWrapping="Wrap"
+                               Text="Drop files into this folder" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 
 </UserControl>

@@ -11,22 +11,26 @@
     Background="Transparent"
     ResizeMode="NoResize"
     ShowInTaskbar="False"
-    Topmost="True">
+    Topmost="True"
+    UseLayoutRounding="True"
+    TextOptions.TextFormattingMode="Display"
+    TextOptions.TextRenderingMode="ClearType"
+    TextOptions.TextHintingMode="Fixed">
 
-    <Border Background="#1a1a1a" BorderBrush="#444" BorderThickness="1" CornerRadius="8"
+    <Border Background="{DynamicResource Ui.CardBackground}" BorderBrush="{DynamicResource Ui.Accent}" BorderThickness="1" CornerRadius="8"
             Margin="12" Padding="0">
         <Border.Effect>
             <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.5" Color="Black" />
         </Border.Effect>
         <StackPanel>
             <TextBox x:Name="SearchBox"
-                     Background="#222" Foreground="#eee" CaretBrush="#eee"
+                     Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}" CaretBrush="{DynamicResource Ui.Foreground}"
                      BorderThickness="0" Padding="14,12" FontSize="15"
                      TextChanged="SearchBox_TextChanged"
                      PreviewKeyDown="SearchBox_PreviewKeyDown" />
-            <Border Height="1" Background="#333" />
+            <Border Height="1" Background="{DynamicResource Ui.Accent}" />
             <ListBox x:Name="ResultsList"
-                     Background="Transparent" Foreground="#ddd"
+                     Background="Transparent" Foreground="{DynamicResource Ui.Foreground}"
                      BorderThickness="0" MaxHeight="340"
                      SelectionChanged="ResultsList_SelectionChanged"
                      MouseDoubleClick="ResultsList_MouseDoubleClick"
@@ -36,7 +40,7 @@
                         <Setter Property="Padding" Value="14,8" />
                         <Setter Property="Cursor" Value="Hand" />
                         <Setter Property="Background" Value="Transparent" />
-                        <Setter Property="Foreground" Value="#ddd" />
+                        <Setter Property="Foreground" Value="{DynamicResource Ui.Foreground}" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
@@ -45,7 +49,7 @@
                                         <DockPanel>
                                             <TextBlock DockPanel.Dock="Right"
                                                        Text="{Binding Shortcut}"
-                                                       Foreground="#666" FontSize="11"
+                                                       Foreground="{DynamicResource Ui.Highlight}" FontSize="11"
                                                        VerticalAlignment="Center"
                                                        Margin="12,0,0,0" />
                                             <TextBlock Text="{Binding Label}"
@@ -56,10 +60,10 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="Bd" Property="Background" Value="#333" />
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Ui.FolderSelectedBackground}" />
                                         </Trigger>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background" Value="#2a2a2a" />
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Ui.HoverBackground}" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>

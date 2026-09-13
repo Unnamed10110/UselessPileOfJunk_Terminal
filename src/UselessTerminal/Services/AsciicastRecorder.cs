@@ -11,7 +11,13 @@ namespace UselessTerminal.Services;
 /// </summary>
 public sealed class AsciicastRecorder : IDisposable
 {
+    private const int FlushThresholdBytes = 32 * 1024;
+    private static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(1000);
+
+    private readonly object _sync = new();
     private StreamWriter? _writer;
+    private System.Threading.Timer? _flushTimer;
+    private int _unflushedBytes;
     private readonly Stopwatch _stopwatch = new();
     private bool _disposed;
 
@@ -24,72 +30,122 @@ public sealed class AsciicastRecorder : IDisposable
 
     public void Start(string title, int cols = 120, int rows = 30)
     {
-        if (_writer is not null) return;
-        try
+        lock (_sync)
         {
-            if (!Directory.Exists(RecordingsDir)) Directory.CreateDirectory(RecordingsDir);
-            string safe = SanitizeFileName(title);
-            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            FilePath = Path.Combine(RecordingsDir, $"{safe}-{stamp}.cast");
-
-            _writer = new StreamWriter(FilePath, false, new UTF8Encoding(false)) { AutoFlush = true };
-
-            var header = new Dictionary<string, object>
+            if (_writer is not null) return;
+            try
             {
-                ["version"] = 2,
-                ["width"] = cols,
-                ["height"] = rows,
-                ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                ["title"] = title,
-                ["env"] = new Dictionary<string, string> { ["TERM"] = "xterm-256color", ["SHELL"] = "ConPTY" }
-            };
-            _writer.WriteLine(JsonSerializer.Serialize(header));
-            _stopwatch.Restart();
+                if (!Directory.Exists(RecordingsDir)) Directory.CreateDirectory(RecordingsDir);
+                string safe = SanitizeFileName(title);
+                string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                FilePath = Path.Combine(RecordingsDir, $"{safe}-{stamp}.cast");
+
+                var stream = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
+                _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = false };
+                _unflushedBytes = 0;
+
+                var header = new Dictionary<string, object>
+                {
+                    ["version"] = 2,
+                    ["width"] = cols,
+                    ["height"] = rows,
+                    ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["title"] = title,
+                    ["env"] = new Dictionary<string, string> { ["TERM"] = "xterm-256color", ["SHELL"] = "ConPTY" }
+                };
+                _writer.WriteLine(JsonSerializer.Serialize(header));
+                _stopwatch.Restart();
+                _flushTimer = new System.Threading.Timer(_ => FlushOnTimer(), null, FlushInterval, FlushInterval);
+            }
+            catch
+            {
+                _writer = null;
+                FilePath = null;
+            }
         }
-        catch
+    }
+
+    private void FlushOnTimer()
+    {
+        lock (_sync)
         {
-            _writer = null;
-            FilePath = null;
+            try
+            {
+                _writer?.Flush();
+                _unflushedBytes = 0;
+            }
+            catch { }
         }
     }
 
     public void WriteOutput(byte[] data)
     {
-        if (_writer is null) return;
-        try
+        lock (_sync)
         {
-            double elapsed = _stopwatch.Elapsed.TotalSeconds;
-            string text = Encoding.UTF8.GetString(data);
-            string escaped = JsonSerializer.Serialize(text);
-            _writer.WriteLine($"[{elapsed:F6}, \"o\", {escaped}]");
+            if (_writer is null) return;
+            try
+            {
+                double elapsed = _stopwatch.Elapsed.TotalSeconds;
+                string text = Encoding.UTF8.GetString(data);
+                string escaped = JsonSerializer.Serialize(text);
+                _writer.WriteLine($"[{elapsed:F6}, \"o\", {escaped}]");
+                _unflushedBytes += data.Length;
+                if (_unflushedBytes >= FlushThresholdBytes)
+                {
+                    _writer.Flush();
+                    _unflushedBytes = 0;
+                }
+            }
+            catch { }
         }
-        catch { }
     }
 
     public void WriteInput(string data)
     {
-        if (_writer is null) return;
-        try
+        lock (_sync)
         {
-            double elapsed = _stopwatch.Elapsed.TotalSeconds;
-            string escaped = JsonSerializer.Serialize(data);
-            _writer.WriteLine($"[{elapsed:F6}, \"i\", {escaped}]");
+            if (_writer is null) return;
+            try
+            {
+                double elapsed = _stopwatch.Elapsed.TotalSeconds;
+                string escaped = JsonSerializer.Serialize(data);
+                _writer.WriteLine($"[{elapsed:F6}, \"i\", {escaped}]");
+                _unflushedBytes += Encoding.UTF8.GetByteCount(data);
+                if (_unflushedBytes >= FlushThresholdBytes)
+                {
+                    _writer.Flush();
+                    _unflushedBytes = 0;
+                }
+            }
+            catch { }
         }
-        catch { }
     }
 
     public void Stop()
     {
-        if (_writer is null) return;
-        _stopwatch.Stop();
-        try { _writer.Dispose(); } catch { }
-        _writer = null;
+        lock (_sync)
+        {
+            if (_writer is null) return;
+            _stopwatch.Stop();
+            _flushTimer?.Dispose();
+            _flushTimer = null;
+            try
+            {
+                _writer.Flush();
+                _writer.Dispose();
+            }
+            catch { }
+            _writer = null;
+        }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         Stop();
     }
 

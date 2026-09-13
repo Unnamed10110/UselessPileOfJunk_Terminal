@@ -6,11 +6,17 @@ namespace UselessTerminal.Services;
 
 public sealed partial class TerminalLogger : IDisposable
 {
+    private const int FlushThresholdBytes = 32 * 1024;
+    private static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(1000);
+
     private static readonly string LogDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "UselessTerminal", "logs");
 
+    private readonly object _sync = new();
     private StreamWriter? _writer;
+    private System.Threading.Timer? _flushTimer;
+    private int _unflushedBytes;
     private bool _disposed;
 
     public bool IsLogging => _writer is not null;
@@ -18,45 +24,79 @@ public sealed partial class TerminalLogger : IDisposable
 
     public void Start(string tabTitle)
     {
-        if (_writer is not null) return;
-        try
+        lock (_sync)
         {
-            if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
-            string safe = SanitizeFileName(tabTitle);
-            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            LogFilePath = Path.Combine(LogDir, $"{safe}-{stamp}.log");
-            _writer = new StreamWriter(LogFilePath, append: true, Encoding.UTF8) { AutoFlush = true };
-            _writer.WriteLine($"--- Session log started: {DateTime.Now:O} ---");
+            if (_writer is not null) return;
+            try
+            {
+                if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
+                string safe = SanitizeFileName(tabTitle);
+                string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                LogFilePath = Path.Combine(LogDir, $"{safe}-{stamp}.log");
+                var stream = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
+                _writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = false };
+                _unflushedBytes = 0;
+                _writer.WriteLine($"--- Session log started: {DateTime.Now:O} ---");
+                _flushTimer = new System.Threading.Timer(_ => FlushOnTimer(), null, FlushInterval, FlushInterval);
+            }
+            catch
+            {
+                _writer = null;
+                LogFilePath = null;
+            }
         }
-        catch
+    }
+
+    private void FlushOnTimer()
+    {
+        lock (_sync)
         {
-            _writer = null;
-            LogFilePath = null;
+            try
+            {
+                _writer?.Flush();
+                _unflushedBytes = 0;
+            }
+            catch { }
         }
     }
 
     public void Stop()
     {
-        if (_writer is null) return;
-        try
+        lock (_sync)
         {
-            _writer.WriteLine($"--- Session log ended: {DateTime.Now:O} ---");
-            _writer.Dispose();
+            if (_writer is null) return;
+            _flushTimer?.Dispose();
+            _flushTimer = null;
+            try
+            {
+                _writer.WriteLine($"--- Session log ended: {DateTime.Now:O} ---");
+                _writer.Flush();
+                _writer.Dispose();
+            }
+            catch { }
+            _writer = null;
         }
-        catch { }
-        _writer = null;
     }
 
     public void Write(byte[] data)
     {
-        if (_writer is null) return;
-        try
+        lock (_sync)
         {
-            string raw = Encoding.UTF8.GetString(data);
-            string clean = StripAnsi(raw);
-            _writer.Write(clean);
+            if (_writer is null) return;
+            try
+            {
+                string raw = Encoding.UTF8.GetString(data);
+                string clean = StripAnsi(raw);
+                _writer.Write(clean);
+                _unflushedBytes += data.Length;
+                if (_unflushedBytes >= FlushThresholdBytes)
+                {
+                    _writer.Flush();
+                    _unflushedBytes = 0;
+                }
+            }
+            catch { }
         }
-        catch { }
     }
 
     private static string StripAnsi(string text)
@@ -79,8 +119,11 @@ public sealed partial class TerminalLogger : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         Stop();
     }
 }

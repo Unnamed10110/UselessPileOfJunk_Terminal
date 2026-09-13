@@ -66,6 +66,8 @@ public sealed class KeyBindingConfig
         D("commandPalette", "Ctrl+Shift+P");
         D("quickConnect", "Ctrl+Shift+O");
         D("movePaneFocus", "Ctrl+Shift+Arrow");
+        D("prevCommand", "Ctrl+Alt+Up");
+        D("nextCommand", "Ctrl+Alt+Down");
         D("selectTab1", "Ctrl+D1");
         D("selectTab2", "Ctrl+D2");
         D("selectTab3", "Ctrl+D3");

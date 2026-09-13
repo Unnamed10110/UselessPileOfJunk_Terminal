@@ -12,7 +12,12 @@
     WindowStartupLocation="Manual"
     ExtendsContentIntoTitleBar="True"
     WindowBackdropType="None"
-    Background="#000000">
+    Background="{DynamicResource Ui.ChromeBackground}"
+    UseLayoutRounding="True"
+    TextOptions.TextFormattingMode="Display"
+    TextOptions.TextRenderingMode="ClearType"
+    TextOptions.TextHintingMode="Fixed"
+    PreviewMouseWheel="MainWindow_PreviewMouseWheel">
 
     <ui:FluentWindow.InputBindings>
         <KeyBinding Key="B" Modifiers="Ctrl" Command="{Binding TogglePanelCommand}" />
@@ -27,35 +32,53 @@
         </Grid.RowDefinitions>
 
         <!-- Title Bar: chrome from TitleBar; centered caption bound to Window.Title (pass-through overlay) -->
-        <Grid Grid.Row="0">
-            <ui:TitleBar x:Name="MainTitleBar"
-                         Title=""
-                         ShowMaximize="True" ShowMinimize="True"
-                         Background="#000000"
-                         Foreground="#ffffff"
-                         ButtonsBackground="#000000"
-                         ButtonsForeground="#ffffff"
-                         Height="16"
-                         MinHeight="30"
-                         MaxHeight="30"
-                         Padding="2,0"
-                         FontSize="12" />
-            <Grid IsHitTestVisible="False">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="1"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Center"
-                           Foreground="#ffffff"
-                           FontSize="16"
-                           TextAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <Border Grid.Row="0" BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="0,0,0,1">
+            <Grid>
+                <ui:TitleBar x:Name="MainTitleBar"
+                             Title=""
+                             ShowMaximize="True" ShowMinimize="True"
+                             Background="{DynamicResource Ui.ChromeBackground}"
+                             Foreground="{DynamicResource Ui.TabForeground}"
+                             ButtonsBackground="{DynamicResource Ui.ChromeBackground}"
+                             ButtonsForeground="{DynamicResource Ui.TabForeground}"
+                             Height="16"
+                             MinHeight="30"
+                             MaxHeight="30"
+                             Padding="2,0"
+                             FontSize="12" />
+                <Grid IsHitTestVisible="False">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Margin="14,0,0,0">
+                        <Ellipse Width="14" Height="14"
+                                 Stroke="{DynamicResource Ui.Accent}"
+                                 StrokeThickness="2" />
+                        <TextBlock Text="Useless Terminal"
+                                   Foreground="{DynamicResource Ui.ForegroundMuted}"
+                                   FontSize="11"
+                                   Margin="6,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource Ui.TabForeground}"
+                               FontFamily="{DynamicResource Ui.FontFamily}"
+                               FontSize="{DynamicResource Ui.FontSizeTitle}"
+                               FontWeight="{DynamicResource Ui.FontWeight}"
+                               TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" />
+                </Grid>
             </Grid>
-        </Grid>
+        </Border>
 
         <!-- Main Content -->
         <Grid Grid.Row="1">
@@ -68,14 +91,14 @@
             </Grid.ColumnDefinitions>
 
             <!-- Session Panel -->
-            <Border Grid.Column="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,1,0">
+            <Border x:Name="SessionPanelChrome" Grid.Column="0" Background="{DynamicResource Ui.ChromeBackground}" BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="0">
                 <local:SessionPanel x:Name="SessionPanel" MinWidth="0" HorizontalAlignment="Stretch" />
             </Border>
 
             <GridSplitter x:Name="SessionGridSplitter"
                           Grid.Column="1"
-                          Width="5" HorizontalAlignment="Stretch"
-                          Background="#333333" BorderThickness="0"
+                          Width="1" HorizontalAlignment="Stretch"
+                          Background="{DynamicResource Ui.CardBorder}" BorderThickness="0"
                           ResizeBehavior="PreviousAndNext"
                           ShowsPreview="False"
                           Cursor="SizeWE"
@@ -92,14 +115,14 @@
                 </Grid.RowDefinitions>
 
                 <!-- Tab Strip -->
-                <Border Grid.Row="0" Background="#000000" BorderBrush="#333333" BorderThickness="0,0,0,1" Padding="0">
+                <Border x:Name="TabChromeBar" Grid.Row="0" Background="{DynamicResource Ui.ChromeBackground}" BorderBrush="{DynamicResource Ui.Accent}" BorderThickness="0,0,0,2" Padding="0">
                     <DockPanel>
                         <Button x:Name="TogglePanelButton" DockPanel.Dock="Left"
                                 Click="TogglePanelButton_Click"
                                 ToolTip="Toggle Sessions (Ctrl+B)"
                                 Background="Transparent" BorderThickness="0"
                                 Padding="10,6" Margin="4,2" Cursor="Hand"
-                                Foreground="#ffffff">
+                                Foreground="{DynamicResource Ui.Icon}">
                             <ui:SymbolIcon Symbol="PanelLeft24" FontSize="16" />
                         </Button>
 
@@ -109,7 +132,7 @@
                                     ToolTip="Toggle Browser (Ctrl+Shift+B)"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
-                                    Foreground="#ffffff">
+                                    Foreground="{DynamicResource Ui.Icon}">
                                 <ui:SymbolIcon Symbol="Globe24" FontSize="16" />
                             </Button>
                             <Button x:Name="SettingsButton"
@@ -117,7 +140,7 @@
                                     ToolTip="Settings (Ctrl+,)"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
-                                    Foreground="#ffffff">
+                                    Foreground="{DynamicResource Ui.Icon}">
                                 <ui:SymbolIcon Symbol="Settings24" FontSize="16" />
                             </Button>
                             <Button x:Name="NewTabButton"
@@ -125,7 +148,7 @@
                                     ToolTip="New Tab (Ctrl+T)"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="10,6" Margin="4,2,0,2" Cursor="Hand"
-                                    Foreground="#ffffff">
+                                    Foreground="{DynamicResource Ui.Icon}">
                                 <ui:SymbolIcon Symbol="Add24" FontSize="16" />
                             </Button>
                             <Button x:Name="NewTabDropdown"
@@ -133,7 +156,7 @@
                                     ToolTip="Select shell"
                                     Background="Transparent" BorderThickness="0"
                                     Padding="4,6" Margin="0,2,4,2" Cursor="Hand"
-                                    Foreground="#ffffff">
+                                    Foreground="{DynamicResource Ui.Icon}">
                                 <ui:SymbolIcon Symbol="ChevronDown24" FontSize="10" />
                                 <Button.ContextMenu>
                                     <ContextMenu x:Name="ShellMenu" />
@@ -172,11 +195,13 @@
                             <TabControl.ItemContainerStyle>
                                 <Style TargetType="TabItem">
                                     <Setter Property="Background" Value="Transparent" />
-                                    <Setter Property="Foreground" Value="#ffffff" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Ui.TabForeground}" />
                                     <Setter Property="BorderThickness" Value="0" />
-                                    <Setter Property="Padding" Value="10,4" />
+                                    <Setter Property="Padding" Value="10,8" />
                                     <Setter Property="Margin" Value="0" />
-                                    <Setter Property="FontSize" Value="10" />
+                                    <Setter Property="FontFamily" Value="{DynamicResource Ui.FontFamily}" />
+                                    <Setter Property="FontSize" Value="{DynamicResource Ui.FontSizeTab}" />
+                                    <Setter Property="FontWeight" Value="{DynamicResource Ui.FontWeight}" />
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="TabItem">
@@ -185,27 +210,43 @@
                                                         Padding="{TemplateBinding Padding}"
                                                         Margin="1,2" CornerRadius="4"
                                                         BorderThickness="1" BorderBrush="Transparent">
-                                                    <DockPanel>
-                                                        <Button x:Name="CloseBtn" DockPanel.Dock="Right"
-                                                                Click="TabCloseButton_Click"
-                                                                Tag="{Binding RelativeSource={RelativeSource TemplatedParent}}"
-                                                                Background="Transparent" BorderThickness="0"
-                                                                Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
-                                                                Foreground="#888888" FontSize="10"
-                                                                Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
-                                                                VerticalAlignment="Center" />
-                                                        <ContentPresenter ContentSource="Header"
-                                                                          VerticalAlignment="Center"
-                                                                          TextElement.Foreground="{TemplateBinding Foreground}" />
-                                                    </DockPanel>
+                                                    <Grid>
+                                                        <DockPanel>
+                                                            <Ellipse x:Name="ColorDot" DockPanel.Dock="Left"
+                                                                     Width="7" Height="7"
+                                                                     Fill="Transparent"
+                                                                     Margin="0,0,6,0"
+                                                                     VerticalAlignment="Center" />
+                                                            <Button x:Name="CloseBtn" DockPanel.Dock="Right"
+                                                                    Click="TabCloseButton_Click"
+                                                                    Tag="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                                    Background="Transparent" BorderThickness="0"
+                                                                    Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
+                                                                    Foreground="{DynamicResource Ui.ForegroundMuted}" FontSize="10"
+                                                                    Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                                                                    VerticalAlignment="Center" />
+                                                            <ContentPresenter ContentSource="Header"
+                                                                              VerticalAlignment="Center"
+                                                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                                                        </DockPanel>
+                                                        <Border x:Name="AccentBar"
+                                                                Height="2"
+                                                                VerticalAlignment="Bottom"
+                                                                HorizontalAlignment="Stretch"
+                                                                Background="Transparent" />
+                                                    </Grid>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsSelected" Value="True">
                                                         <Setter TargetName="TabBorder" Property="Opacity" Value="1" />
-                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#000000" />
+                                                        <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Ui.AccentDim}" />
+                                                        <Setter TargetName="AccentBar" Property="Background" Value="{DynamicResource Ui.Accent}" />
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="{DynamicResource Ui.TabForeground}" />
                                                     </Trigger>
                                                     <Trigger Property="IsSelected" Value="False">
-                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="#888888" />
+                                                        <Setter TargetName="TabBorder" Property="Background" Value="Transparent" />
+                                                        <Setter TargetName="AccentBar" Property="Background" Value="Transparent" />
+                                                        <Setter TargetName="CloseBtn" Property="Foreground" Value="{DynamicResource Ui.ForegroundMuted}" />
                                                     </Trigger>
                                                     <MultiTrigger>
                                                         <MultiTrigger.Conditions>
@@ -225,27 +266,41 @@
                 </Border>
 
                 <!-- Terminal Content Area -->
-                <Grid x:Name="TerminalHost" Grid.Row="1" Background="#000000" Margin="0,0,0,0" />
+                <Grid x:Name="TerminalHost" Grid.Row="1" Background="{DynamicResource Ui.TerminalBackground}" Margin="0,0,0,0" />
 
                 <!-- Status Bar (own row so WebView2 HWND doesn't cover it) -->
-                <Border Grid.Row="2" Height="22"
-                        Background="#0a0a0a" BorderBrush="#1a1a1a" BorderThickness="0,1,0,0"
+                <Border x:Name="StatusBarBorder" Grid.Row="2" Height="22"
+                        Background="{DynamicResource Ui.StatusBackground}" BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="0,1,0,0"
                         Padding="10,0">
                     <DockPanel>
                         <TextBlock x:Name="StatusAlive" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                   Foreground="#22c55e" FontSize="10.5" VerticalAlignment="Center" />
+                                   Foreground="{DynamicResource Ui.Accent}" FontSize="{DynamicResource Ui.FontSizeSmall}" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="StatusShell" Foreground="#a1a1aa" FontSize="10.5" FontWeight="SemiBold"
-                                       VerticalAlignment="Center" Margin="0,0,12,0" />
-                            <TextBlock x:Name="StatusPid" Foreground="#71717a" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,12,0" />
-                            <TextBlock x:Name="StatusCwd" Foreground="#d4d4d8" FontSize="10.5"
+                            <ui:SymbolIcon Symbol="WindowConsole20" FontSize="12" Width="14" Height="14"
+                                           Foreground="{DynamicResource Ui.Success}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock x:Name="StatusShell" Foreground="{DynamicResource Ui.Success}" FontSize="{DynamicResource Ui.FontSizeSmall}" FontWeight="{DynamicResource Ui.FontWeight}"
+                                       VerticalAlignment="Center" />
+                            <Border Width="1" Height="12" Background="{DynamicResource Ui.CardBorder}" VerticalAlignment="Center" Margin="8,0,12,0" />
+
+                            <TextBlock x:Name="StatusPid" Foreground="{DynamicResource Ui.ForegroundMuted}" FontSize="{DynamicResource Ui.FontSizeSmall}"
+                                       VerticalAlignment="Center" />
+                            <Border Width="1" Height="12" Background="{DynamicResource Ui.CardBorder}" VerticalAlignment="Center" Margin="8,0,12,0" />
+
+                            <ui:SymbolIcon Symbol="Folder24" FontSize="12" Width="14" Height="14"
+                                           Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock x:Name="StatusCwd" Foreground="{DynamicResource Ui.Foreground}" FontSize="{DynamicResource Ui.FontSizeSmall}"
                                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                       MaxWidth="500" Margin="0,0,12,0" />
-                            <TextBlock x:Name="StatusGitBranch" Foreground="#22d3ee" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,12,0" />
-                            <TextBlock x:Name="StatusExitCode" Foreground="#a1a1aa" FontSize="10.5"
-                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                                       MaxWidth="500" />
+                            <Border Width="1" Height="12" Background="{DynamicResource Ui.CardBorder}" VerticalAlignment="Center" Margin="8,0,12,0" />
+
+                            <ui:SymbolIcon Symbol="BranchFork24" FontSize="12" Width="14" Height="14"
+                                           Foreground="{DynamicResource Ui.Highlight}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock x:Name="StatusGitBranch" Foreground="{DynamicResource Ui.Highlight}" FontSize="{DynamicResource Ui.FontSizeSmall}"
+                                       VerticalAlignment="Center" />
+                            <Border Width="1" Height="12" Background="{DynamicResource Ui.CardBorder}" VerticalAlignment="Center" Margin="8,0,12,0" />
+
+                            <TextBlock x:Name="StatusExitCode" Foreground="{DynamicResource Ui.Warning}" FontSize="{DynamicResource Ui.FontSizeSmall}"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                     </DockPanel>
                 </Border>
@@ -255,14 +310,14 @@
             <GridSplitter x:Name="BrowserGridSplitter"
                           Grid.Column="3"
                           Width="5" HorizontalAlignment="Stretch"
-                          Background="#333333" BorderThickness="0"
+                          Background="{DynamicResource Ui.Splitter}" BorderThickness="0"
                           ResizeBehavior="PreviousAndNext"
                           ShowsPreview="False"
                           Cursor="SizeWE"
                           DragCompleted="BrowserGridSplitter_DragCompleted" />
 
             <!-- Browser Panel -->
-            <Border Grid.Column="4" Background="#0a0a0a" BorderBrush="#333333" BorderThickness="1,0,0,0">
+            <Border x:Name="BrowserPanelChrome" Grid.Column="4" Background="{DynamicResource Ui.ChromeBackground}" BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1,0,0,0">
                 <local:BrowserPanel x:Name="BrowserPanel" MinWidth="0" HorizontalAlignment="Stretch" />
             </Border>
         </Grid>

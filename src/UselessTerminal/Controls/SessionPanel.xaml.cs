@@ -25,6 +25,8 @@ public sealed partial class SessionPanel : UserControl
     private bool _isDragInProgress;
     /// <summary>Session ids being dragged; valid until DoDragDrop returns (Drop runs while this is set).</summary>
     private List<string>? _dragSessionIdsSnapshot;
+    /// <summary>Polls MainWindow.GetLiveSessionIds() to refresh each session node's IsLive flag.</summary>
+    private readonly DispatcherTimer _liveStatusTimer;
 
     /// <summary>Second argument: true = elevated external console (UAC), false = embedded terminal tab.</summary>
     public event Action<SavedSession, bool>? SessionLaunched;
@@ -38,6 +40,38 @@ public sealed partial class SessionPanel : UserControl
         RefreshList();
         LoadSnippets();
         SnippetStore.Instance.SnippetsChanged += LoadSnippets;
+
+        _liveStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _liveStatusTimer.Tick += LiveStatusTimer_Tick;
+        _liveStatusTimer.Start();
+        Loaded += (_, _) =>
+        {
+            if (!_liveStatusTimer.IsEnabled)
+                _liveStatusTimer.Start();
+        };
+        Unloaded += (_, _) => _liveStatusTimer.Stop();
+    }
+
+    private void LiveStatusTimer_Tick(object? sender, EventArgs e)
+    {
+        if (Application.Current?.MainWindow is not UselessTerminal.MainWindow mainWindow)
+            return;
+
+        HashSet<string> liveIds;
+        try
+        {
+            liveIds = mainWindow.GetLiveSessionIds();
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var node in EnumerateSessionNodes(SessionTree.Items))
+        {
+            if (node.Kind == SessionTreeNodeKind.Session && node.Session is not null)
+                node.IsLive = liveIds.Contains(node.Session.Id);
+        }
     }
 
     private void SessionTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object?> e)
@@ -196,6 +230,37 @@ public sealed partial class SessionPanel : UserControl
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         RefreshList(SearchBox.Text);
+    }
+
+    private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        SearchBoxBorder.BorderBrush = (Brush)FindResource("Ui.Accent");
+    }
+
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        SearchBoxBorder.BorderBrush = (Brush)FindResource("Ui.CardBorder");
+    }
+
+    private void MoreMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { ContextMenu: { } menu } button)
+        {
+            menu.PlacementTarget = button;
+            menu.IsOpen = true;
+        }
+    }
+
+    private void FolderCard_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.FindName("FolderActionsPanel") is UIElement panel)
+            panel.Opacity = 1;
+    }
+
+    private void FolderCard_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.FindName("FolderActionsPanel") is UIElement panel)
+            panel.Opacity = 0;
     }
 
     private void SessionTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)

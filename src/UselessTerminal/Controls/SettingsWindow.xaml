@@ -7,8 +7,12 @@
     MinWidth="480" MinHeight="560"
     WindowStartupLocation="CenterOwner"
     ResizeMode="CanResize"
-    Background="#000000"
-    Foreground="#ffffff">
+    Background="{DynamicResource Ui.ChromeBackground}"
+    Foreground="{DynamicResource Ui.Foreground}"
+    UseLayoutRounding="True"
+    TextOptions.TextFormattingMode="Display"
+    TextOptions.TextRenderingMode="ClearType"
+    TextOptions.TextHintingMode="Fixed">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -20,45 +24,110 @@
             <StackPanel>
 
                 <!-- Font Section -->
-                <TextBlock Text="F O N T" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                <TextBlock Text="T E R M I N A L   F O N T" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Accent}"
                            Margin="0,0,0,10" />
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Family" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Family" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <ComboBox x:Name="FontFamilyBox" IsEditable="True"
-                              Background="#000000" Foreground="#ffffff"
-                              BorderBrush="#555555" BorderThickness="1" Padding="8,5" />
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5" />
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Size" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Size" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="FontSizeSlider" Width="200" Minimum="8" Maximum="32"
                                 IsSnapToTickEnabled="True" TickFrequency="1"
                                 ValueChanged="FontSizeSlider_ValueChanged"
                                 VerticalAlignment="Center" />
-                        <TextBlock x:Name="FontSizeLabel" Width="40" Foreground="#ffffff"
+                        <TextBlock x:Name="FontSizeLabel" Width="40" Foreground="{DynamicResource Ui.Foreground}"
                                    VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Weight" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Weight" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="FontWeightSlider" Width="200" Minimum="300" Maximum="700"
                                 IsSnapToTickEnabled="True" TickFrequency="50"
                                 ValueChanged="FontWeightSlider_ValueChanged"
                                 VerticalAlignment="Center" />
-                        <TextBlock x:Name="FontWeightLabel" Width="44" Foreground="#ffffff"
+                        <TextBlock x:Name="FontWeightLabel" Width="44" Foreground="{DynamicResource Ui.Foreground}"
                                    VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Cursor Style" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="UI scale" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="UiScaleSlider" Width="200" Minimum="75" Maximum="200"
+                                IsSnapToTickEnabled="True" TickFrequency="5"
+                                ValueChanged="UiScaleSlider_ValueChanged"
+                                VerticalAlignment="Center" />
+                        <TextBlock x:Name="UiScaleLabel" Width="48" Foreground="{DynamicResource Ui.Foreground}"
+                                   VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                </DockPanel>
+                <TextBlock Text="Ctrl+scroll over tabs, session panel, or status bar (not the terminal)."
+                           FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" Margin="120,0,0,10" TextWrapping="Wrap" />
+
+                <Border Height="1" Background="{DynamicResource Ui.CardBorder}" Margin="0,6,0,16" />
+
+                <TextBlock Text="I N T E R F A C E" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Accent}"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Tabs, session cards, folder cards, and the status bar."
+                           FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="UI font" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <ComboBox x:Name="UiFontFamilyBox" IsEditable="True"
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5" />
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="UI size" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="UiFontSizeSlider" Width="200" Minimum="10" Maximum="22"
+                                IsSnapToTickEnabled="True" TickFrequency="1"
+                                ValueChanged="UiFontSizeSlider_ValueChanged"
+                                VerticalAlignment="Center" />
+                        <TextBlock x:Name="UiFontSizeLabel" Width="40" Foreground="{DynamicResource Ui.Foreground}"
+                                   VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="UI weight" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="UiFontWeightSlider" Width="200" Minimum="300" Maximum="700"
+                                IsSnapToTickEnabled="True" TickFrequency="50"
+                                ValueChanged="UiFontWeightSlider_ValueChanged"
+                                VerticalAlignment="Center" />
+                        <TextBlock x:Name="UiFontWeightLabel" Width="44" Foreground="{DynamicResource Ui.Foreground}"
+                                   VerticalAlignment="Center" TextAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="Sharpness" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <ComboBox x:Name="UiSharpnessBox"
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5">
+                        <ComboBoxItem Content="Sharp" />
+                        <ComboBoxItem Content="Balanced" />
+                        <ComboBoxItem Content="Smooth" />
+                    </ComboBox>
+                </DockPanel>
+
+                <UniformGrid x:Name="UiColorGrid" Columns="2" Margin="0,4,0,10" />
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="Cursor Style" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <ComboBox x:Name="CursorStyleBox"
-                              Background="#000000" Foreground="#ffffff"
-                              BorderBrush="#555555" BorderThickness="1" Padding="8,5">
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5">
                         <ComboBoxItem Content="bar" />
                         <ComboBoxItem Content="block" />
                         <ComboBoxItem Content="underline" />
@@ -66,35 +135,35 @@
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Cursor Blink" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Cursor Blink" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <CheckBox x:Name="CursorBlinkBox" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Scrollback" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Scrollback" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <TextBox x:Name="ScrollbackBox" Width="100" Padding="8,5"
-                             Background="#000000" Foreground="#ffffff"
-                             BorderBrush="#555555" BorderThickness="1" />
+                             Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                             BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Window Backdrop" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Window Backdrop" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <ComboBox x:Name="WindowBackdropBox"
-                              Background="#000000" Foreground="#ffffff"
-                              BorderBrush="#555555" BorderThickness="1" Padding="8,5">
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5">
                         <ComboBoxItem Content="None" />
                         <ComboBoxItem Content="Mica" />
                         <ComboBoxItem Content="Acrylic" />
                     </ComboBox>
                 </DockPanel>
 
-                <Border Height="1" Background="#333333" Margin="0,10,0,16" />
+                <Border Height="1" Background="{DynamicResource Ui.CardBorder}" Margin="0,10,0,16" />
 
-                <TextBlock Text="S H E L L   B A C K G R O U N D" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                <TextBlock Text="S H E L L   B A C K G R O U N D" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Highlight}"
                            Margin="0,0,0,10" />
 
                 <DockPanel Margin="0,0,0,8">
-                    <TextBlock Text="Image" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Image" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -102,40 +171,40 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="ShellBgPathBox" Grid.Column="0" Padding="8,5" IsReadOnly="True"
-                                 Background="#0a0a0a" Foreground="#cccccc"
-                                 BorderBrush="#555555" BorderThickness="1" />
+                                 Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.ForegroundMuted}"
+                                 BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" />
                         <Button Grid.Column="1" Content="Browse…" Click="BrowseShellBg_Click" Margin="8,0,0,0"
-                                Padding="12,5" Background="#000000" Foreground="#ffffff"
-                                BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                                Padding="12,5" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                                BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Cursor="Hand" />
                         <Button Grid.Column="2" Content="Clear" Click="ClearShellBg_Click" Margin="8,0,0,0"
-                                Padding="12,5" Background="#000000" Foreground="#888888"
-                                BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                                Padding="12,5" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.ForegroundMuted}"
+                                BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Cursor="Hand" />
                     </Grid>
                 </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Image opacity" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Image opacity" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="ShellBgOpacitySlider" Width="200" Minimum="0" Maximum="100"
                                 ValueChanged="ShellBgOpacitySlider_ValueChanged"
                                 VerticalAlignment="Center" />
-                        <TextBlock x:Name="ShellBgOpacityLabel" Width="44" Foreground="#ffffff"
+                        <TextBlock x:Name="ShellBgOpacityLabel" Width="44" Foreground="{DynamicResource Ui.Foreground}"
                                    VerticalAlignment="Center" TextAlignment="Right" Margin="8,0,0,0" />
                     </StackPanel>
                 </DockPanel>
 
-                <Border Height="1" Background="#333333" Margin="0,10,0,20" />
+                <Border Height="1" Background="{DynamicResource Ui.CardBorder}" Margin="0,10,0,20" />
 
-                <TextBlock Text="P R O M P T   &amp;   O U T P U T" FontSize="11" FontWeight="Bold" Foreground="#888888"
+                <TextBlock Text="P R O M P T   &amp;   O U T P U T" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Success}"
                            Margin="0,0,0,4" />
                 <TextBlock Text="Maps to ANSI colors (red, green, yellow, …) so shells and prompts follow the same roles."
-                           FontSize="10" Foreground="#555555" TextWrapping="Wrap" Margin="0,0,0,10" />
+                           FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Theme Preset" Width="120" Foreground="#ffffff" VerticalAlignment="Center" />
+                    <TextBlock Text="Theme Preset" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
                     <ComboBox x:Name="ThemePresetBox"
-                              Background="#000000" Foreground="#ffffff"
-                              BorderBrush="#555555" BorderThickness="1" Padding="8,5"
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5"
                               SelectionChanged="ThemePresetBox_SelectionChanged" />
                 </DockPanel>
 
@@ -147,17 +216,17 @@
         </ScrollViewer>
 
         <!-- Bottom Bar -->
-        <Border Grid.Row="1" Padding="24,12" BorderBrush="#333333" BorderThickness="0,1,0,0">
+        <Border Grid.Row="1" Padding="24,12" BorderBrush="{DynamicResource Ui.Accent}" BorderThickness="0,1,0,0">
             <DockPanel>
                 <Button Content="Reset Defaults" Click="ResetDefaults_Click" DockPanel.Dock="Left"
-                        Padding="16,8" Background="#000000" Foreground="#888888"
-                        BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                        Padding="16,8" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.ForegroundMuted}"
+                        BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Cursor="Hand" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Cancel" Click="Cancel_Click" Padding="16,8"
-                            Margin="0,0,8,0" Background="#000000" Foreground="#ffffff"
-                            BorderBrush="#555555" BorderThickness="1" Cursor="Hand" />
+                            Margin="0,0,8,0" Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                            BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Cursor="Hand" />
                     <Button Content="Save" Click="Save_Click" Padding="16,8"
-                            Background="#ffffff" Foreground="#000000"
+                            Background="{DynamicResource Ui.TabSelectedBackground}" Foreground="{DynamicResource Ui.TabSelectedForeground}"
                             BorderThickness="0" FontWeight="Bold" Cursor="Hand" />
                 </StackPanel>
             </DockPanel>
