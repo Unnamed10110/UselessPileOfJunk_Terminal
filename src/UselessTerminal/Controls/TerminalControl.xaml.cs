@@ -707,29 +707,80 @@ try {{
 
     private static string BuildPsReadLineInputColorScript()
     {
-        var (r, g, b) = ParseRgb(SettingsStore.Instance.Current.ColorInput);
-        // PSReadLine is not imported yet during -EncodedCommand; apply from prompt/OnIdle
-        // with 24-bit VT (works on PSReadLine 2.x; "#RRGGBB" does not on older builds).
+        var s = SettingsStore.Instance.Current;
+        var (ir, ig, ib) = ParseRgb(s.ColorInput);
+        var (cr, cg, cb) = ParseRgb(s.ColorCommand);
+        var (er, eg, eb) = ParseRgb(s.ColorError);
+        var (wr, wg, wb) = ParseRgb(s.ColorWarning);
+        var (mr, mg, mb) = ParseRgb(s.ColorMessage);
+        var (ar, ag, ab) = ParseRgb(s.ColorAccent);
+        var (hr, hg, hb) = ParseRgb(s.ColorHighlight);
+        var (dr, dg, db) = ParseRgb(s.TextDefault);
+        var (ur, ug, ub) = ParseRgb(s.TextMuted);
+
+        // Apply PSReadLine + $PSStyle from the prompt theme so Format-*/dir/errors match xterm ANSI roles.
+        // Re-runnable: OnIdle and prompt call this; live settings updates clear the applied flag.
         return $@"
+function global:__utVt([int]$r,[int]$g,[int]$b) {{
+  return ($global:__utE + '[38;2;' + $r + ';' + $g + ';' + $b + 'm')
+}}
 function global:__utApplyInputColor {{
   if ($global:__utInputColorApplied) {{ return }}
   try {{
     Import-Module PSReadLine -ErrorAction Stop
-    $vt = $global:__utE + '[38;2;{r};{g};{b}m'
+    $cmd = __utVt {cr} {cg} {cb}
+    $inp = __utVt {ir} {ig} {ib}
+    $err = __utVt {er} {eg} {eb}
+    $warn = __utVt {wr} {wg} {wb}
+    $msg = __utVt {mr} {mg} {mb}
+    $acc = __utVt {ar} {ag} {ab}
+    $hi = __utVt {hr} {hg} {hb}
+    $def = __utVt {dr} {dg} {db}
+    $mut = __utVt {ur} {ug} {ub}
     Set-PSReadLineOption -ErrorAction Stop -Colors @{{
-      Command = $vt
-      Default = $vt
-      Number = $vt
-      Parameter = $vt
-      Operator = $vt
-      Member = $vt
-      Variable = $vt
-      Keyword = $vt
-      Type = $vt
-      String = $vt
+      Command            = $cmd
+      Default            = $inp
+      Number             = $inp
+      Parameter          = $acc
+      Operator           = $mut
+      Member             = $hi
+      Variable           = $msg
+      Keyword            = $hi
+      Type               = $acc
+      String             = $warn
+      Comment            = $mut
+      Error              = $err
+      Selection          = $acc
+      ContinuationPrompt = $mut
     }}
-    $global:__utInputColorApplied = $true
   }} catch {{}}
+  try {{
+    if (Get-Variable -Name PSStyle -ErrorAction SilentlyContinue) {{
+      $err = __utVt {er} {eg} {eb}
+      $warn = __utVt {wr} {wg} {wb}
+      $msg = __utVt {mr} {mg} {mb}
+      $acc = __utVt {ar} {ag} {ab}
+      $hi = __utVt {hr} {hg} {hb}
+      $cmd = __utVt {cr} {cg} {cb}
+      $mut = __utVt {ur} {ug} {ub}
+      $PSStyle.Formatting.Error            = $err
+      $PSStyle.Formatting.ErrorAccent      = $err
+      $PSStyle.Formatting.Warning          = $warn
+      $PSStyle.Formatting.FormatAccent     = $acc
+      $PSStyle.Formatting.TableHeader      = $acc
+      $PSStyle.Formatting.Verbose          = $msg
+      $PSStyle.Formatting.Debug            = $mut
+      $PSStyle.FileInfo.Directory          = $acc
+      $PSStyle.FileInfo.SymbolicLink       = $hi
+      $PSStyle.FileInfo.Executable         = $cmd
+      if ($PSStyle.FileInfo.Extension) {{
+        foreach ($ext in @('.exe','.cmd','.bat','.ps1','.psm1','.psd1')) {{
+          if ($PSStyle.FileInfo.Extension.ContainsKey($ext)) {{ $PSStyle.FileInfo.Extension[$ext] = $cmd }}
+        }}
+      }}
+    }}
+  }} catch {{}}
+  $global:__utInputColorApplied = $true
 }}
 ";
     }

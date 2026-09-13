@@ -76,8 +76,16 @@
 
                 <TextBlock Text="I N T E R F A C E" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Accent}"
                            Margin="0,0,0,4" />
-                <TextBlock Text="Tabs, session cards, folder cards, and the status bar."
+                <TextBlock Text="Tabs, session cards, folder cards, and the status bar — independent of the prompt theme."
                            FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="UI theme" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <ComboBox x:Name="UiThemePresetBox"
+                              Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
+                              BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5"
+                              SelectionChanged="UiThemePresetBox_SelectionChanged" />
+                </DockPanel>
 
                 <DockPanel Margin="0,0,0,10">
                     <TextBlock Text="UI font" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
@@ -197,15 +205,15 @@
 
                 <TextBlock Text="P R O M P T   &amp;   O U T P U T" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Ui.Success}"
                            Margin="0,0,0,4" />
-                <TextBlock Text="Maps to ANSI colors (red, green, yellow, …) so shells and prompts follow the same roles."
+                <TextBlock Text="Terminal canvas and ANSI roles (red, green, yellow, …). Separate from the UI chrome theme."
                            FontSize="10" Foreground="{DynamicResource Ui.ForegroundMuted}" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                 <DockPanel Margin="0,0,0,10">
-                    <TextBlock Text="Theme Preset" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
-                    <ComboBox x:Name="ThemePresetBox"
+                    <TextBlock Text="Prompt theme" Width="120" Foreground="{DynamicResource Ui.Foreground}" VerticalAlignment="Center" />
+                    <ComboBox x:Name="PromptThemePresetBox"
                               Background="{DynamicResource Ui.InputBackground}" Foreground="{DynamicResource Ui.InputForeground}"
                               BorderBrush="{DynamicResource Ui.CardBorder}" BorderThickness="1" Padding="8,5"
-                              SelectionChanged="ThemePresetBox_SelectionChanged" />
+                              SelectionChanged="PromptThemePresetBox_SelectionChanged" />
                 </DockPanel>
 
                 <UniformGrid x:Name="ColorGrid" Columns="2" Margin="0,0,0,10">

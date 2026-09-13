@@ -705,9 +705,10 @@
         document.body.style.background = s.theme?.background || '#000000';
         const termEl = document.getElementById('terminal');
         const useBgImg = !!(s.useBackgroundImage && s.backgroundImageDataUrl);
-        termEl.style.background = useBgImg ? 'transparent' : '#000000';
+        termEl.style.background = useBgImg ? 'transparent' : (s.theme?.background || '#000000');
         try { term.options.allowTransparency = useBgImg; } catch (e) {}
         if (s.colorInput) setTypedInputColor(s.colorInput);
+        try { forceFullRedraw(); } catch (e) {}
         requestAnimationFrame(function() {
             refitAndNotifyHost();
             setTimeout(refitAndNotifyHost, 50);

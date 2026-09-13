@@ -122,11 +122,17 @@ public partial class SettingsWindow : Window
         ShellBgOpacitySlider.Value = Math.Clamp(_settings.ShellBackgroundImageOpacity * 100, 0, 100);
         ShellBgOpacityLabel.Text = $"{(int)ShellBgOpacitySlider.Value}%";
 
-        ThemePresetBox.Items.Clear();
-        ThemePresetBox.Items.Add("Custom");
-        foreach (var name in ThemePresets.All.Keys)
-            ThemePresetBox.Items.Add(name);
-        ThemePresetBox.SelectedIndex = 0;
+        UiThemePresetBox.Items.Clear();
+        UiThemePresetBox.Items.Add("Custom");
+        foreach (var name in ThemePresets.UiThemes.Keys)
+            UiThemePresetBox.Items.Add(name);
+        UiThemePresetBox.SelectedIndex = 0;
+
+        PromptThemePresetBox.Items.Clear();
+        PromptThemePresetBox.Items.Add("Custom");
+        foreach (var name in ThemePresets.PromptThemes.Keys)
+            PromptThemePresetBox.Items.Add(name);
+        PromptThemePresetBox.SelectedIndex = 0;
 
         BuildColorGrid(ColorGrid, ColorEntries);
         BuildColorGrid(UiColorGrid, UiColorEntries);
@@ -280,13 +286,20 @@ public partial class SettingsWindow : Window
             Handle = new WindowInteropHelper(window).EnsureHandle();
     }
 
-    private void ThemePresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void UiThemePresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ThemePresetBox.SelectedItem is not string name) return;
-        if (name == "Custom" || !ThemePresets.All.TryGetValue(name, out var preset)) return;
-        ThemePresets.ApplyTo(_settings, preset);
-        BuildColorGrid(ColorGrid, ColorEntries);
+        if (UiThemePresetBox.SelectedItem is not string name) return;
+        if (name == "Custom" || !ThemePresets.UiThemes.TryGetValue(name, out var preset)) return;
+        ThemePresets.ApplyUi(_settings, preset);
         BuildColorGrid(UiColorGrid, UiColorEntries);
+    }
+
+    private void PromptThemePresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PromptThemePresetBox.SelectedItem is not string name) return;
+        if (name == "Custom" || !ThemePresets.PromptThemes.TryGetValue(name, out var preset)) return;
+        ThemePresets.ApplyPrompt(_settings, preset);
+        BuildColorGrid(ColorGrid, ColorEntries);
     }
 
     private void FontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
