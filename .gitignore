@@ -4,6 +4,7 @@ obj/
 artifacts/
 publish/
 installer/
+.wix/
 publish.zip
 
 # Visual Studio / Rider
@@ -35,3 +36,4 @@ Desktop.ini
 AGENTS.md
 CLAUDE.md
 GEMINI.md
+release_github.ps1
