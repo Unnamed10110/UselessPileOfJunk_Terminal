@@ -28,6 +28,17 @@ public static class ThemePresets
         ["AMOLED Matrix"] = UiAmoled("#00ff41", "#33ff77", "#aaff00", "#ff003c", "#00e5ff"),
         ["AMOLED Ice"] = UiAmoled("#b3ffff", "#80d8ff", "#18ffff", "#ff5252", "#ea80fc"),
 
+        ["AMOLED Eclipse"] = UiAmoled("#2dffb3", "#7a5cff", "#ffb627", "#ff2e63", "#ff4fd8"),
+        ["AMOLED Crimson"] = UiAmoled("#ff7a8f", "#ff2447", "#ffd23f", "#ff00aa", "#ff9e00"),
+        ["AMOLED Ultraviolet"] = UiAmoled("#d98cff", "#b026ff", "#ffb627", "#ff2e63", "#ff4fd8"),
+        ["AMOLED Cobalt"] = UiAmoled("#5cc8ff", "#2f7bff", "#ffc233", "#ff3b5c", "#a87bff"),
+        ["AMOLED Toxic"] = UiAmoled("#7dff5c", "#39ff14", "#ffe600", "#ff2e4d", "#c6ff00"),
+        ["AMOLED Voltage"] = UiAmoled("#fff27a", "#ffe600", "#ff9f1c", "#ff2e4d", "#ff5cf0"),
+        ["AMOLED Ember"] = UiAmoled("#ffae42", "#ff7a00", "#ffe600", "#ff1f3d", "#ff3d7f"),
+        ["AMOLED Sakura"] = UiAmoled("#ff8fd1", "#ff3fa4", "#ffc233", "#ff2e4d", "#c77dff"),
+        ["AMOLED Aqua"] = UiAmoled("#5cffe4", "#00e5ff", "#ffc233", "#ff2e63", "#ff4fd8"),
+        ["AMOLED Frost"] = UiAmoled("#9fe7ff", "#cfe8ff", "#ffd98a", "#ff5c7a", "#ff9ce6"),
+
         ["Light"] = UiLight("#1565c0", "#6a1b9a", "#2e7d32", "#f9a825", "#c62828"),
         ["Light Green"] = UiLight("#2e7d32", "#00695c", "#558b2f", "#f9a825", "#c62828"),
         ["Light Red"] = UiLight("#c62828", "#ad1457", "#e65100", "#f9a825", "#b71c1c"),
@@ -105,6 +116,18 @@ public static class ThemePresets
         ["Neon Retrowave"] = Neon("#ff2a6d", "#05d9e8", "#d1f7ff", "#ff003c", "#7700ff", "#ff71ce"),
         ["Neon Ghost"] = Neon("#e0ffff", "#afeeee", "#7fffd4", "#ff69b4", "#dda0dd", "#f0ffff"),
         ["Neon Radar"] = Neon("#00ff9c", "#00c853", "#76ff03", "#ff1744", "#00e5ff", "#64ffda"),
+
+        // AMOLED — true black, soft off-white text, neon only on semantic colors
+        ["AMOLED Eclipse"] = Amoled("#7a5cff", "#2dffb3", "#35d6ff", "#ff4fd8", "#ffb627", "#ff2e63"),
+        ["AMOLED Crimson"] = Amoled("#ff2447", "#ff7a8f", "#ffb3c1", "#ff9e00", "#ffd23f", "#ff00aa"),
+        ["AMOLED Ultraviolet"] = Amoled("#b026ff", "#d98cff", "#7df9ff", "#ff4fd8", "#ffb627", "#ff2e63"),
+        ["AMOLED Cobalt"] = Amoled("#2f7bff", "#5cc8ff", "#00f0ff", "#a87bff", "#ffc233", "#ff3b5c"),
+        ["AMOLED Toxic"] = Amoled("#39ff14", "#7dff5c", "#00ffc8", "#c6ff00", "#ffe600", "#ff2e4d"),
+        ["AMOLED Voltage"] = Amoled("#ffe600", "#fff27a", "#7df9ff", "#ff5cf0", "#ff9f1c", "#ff2e4d"),
+        ["AMOLED Ember"] = Amoled("#ff7a00", "#ffae42", "#4dd9ff", "#ff3d7f", "#ffe600", "#ff1f3d"),
+        ["AMOLED Sakura"] = Amoled("#ff3fa4", "#ff8fd1", "#7df9ff", "#c77dff", "#ffc233", "#ff2e4d"),
+        ["AMOLED Aqua"] = Amoled("#00e5ff", "#5cffe4", "#7ab8ff", "#ff4fd8", "#ffc233", "#ff2e63"),
+        ["AMOLED Frost"] = Amoled("#cfe8ff", "#9fe7ff", "#e0d4ff", "#ff9ce6", "#ffd98a", "#ff5c7a"),
     };
 
     public static void ApplyUi(AppSettings settings, UiThemePreset preset)
@@ -229,6 +252,12 @@ public static class ThemePresets
             err, warn, cmd, msg, cursor, hi,
             cursor, cursor, "#000000");
     }
+
+    private static PromptThemePreset Amoled(
+        string acc, string cmd, string msg, string hi, string warn, string err) =>
+        Prompt("#000000", Mix("#e2e2ea", acc, 0.08), "#ffffff", Mix("#505060", acc, 0.15),
+            err, warn, cmd, msg, acc, hi,
+            cmd, Mix("#000000", acc, 0.35), "#ffffff");
 
     private static PromptThemePreset Prompt(
         string bg, string fg, string input, string muted,

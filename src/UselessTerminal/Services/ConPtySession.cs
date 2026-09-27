@@ -154,11 +154,20 @@ public sealed class ConPtySession : IDisposable
             lpAttributeList = _attributeList
         };
 
-        nint envBlock = 0;
+        // Always pass a real terminal type. Inheriting the host env can send TERM=dumb
+        // (or nothing) to ssh.exe, which then advertises that to the remote shell so
+        // bash/ls/grep skip colors. ExtraEnvironment may override these.
+        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["TERM"] = "xterm-256color",
+            ["COLORTERM"] = "truecolor",
+        };
         if (_extraEnv is { Count: > 0 })
         {
-            envBlock = BuildEnvironmentBlock(_extraEnv);
+            foreach (var kv in _extraEnv)
+                env[kv.Key] = kv.Value;
         }
+        nint envBlock = BuildEnvironmentBlock(env);
 
         if (!CreateProcessW(
                 null, command, 0, 0, false,
