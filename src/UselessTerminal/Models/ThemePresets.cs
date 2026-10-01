@@ -38,16 +38,16 @@ public static class ThemePresets
             "#D9827A", "#E8C989", "#A8C787", "#8FBCBB", "#FFC799", "#C9A0DC",
             "#FFFFFF", "#2A2A2A", "#FFFFFF"),
 
-        ["AMOLED Green"] = Amoled("#39ff14", "#00e676", "#c6ff00", "#ff1744", "#18ffff"),
-        ["AMOLED Red"] = Amoled("#ff1744", "#ff5252", "#ffab00", "#ff1744", "#ff80ab"),
-        ["AMOLED Purple Neon"] = Amoled("#d500f9", "#ea80fc", "#f50057", "#ff1744", "#00e5ff"),
-        ["AMOLED Cyan"] = Amoled("#00e5ff", "#18ffff", "#00e676", "#ff1744", "#ea80fc"),
-        ["AMOLED Orange"] = Amoled("#ff6d00", "#ff9100", "#ffea00", "#ff1744", "#ff80ab"),
-        ["AMOLED Pink"] = Amoled("#ff4081", "#ff80ab", "#f50057", "#ff1744", "#e040fb"),
-        ["AMOLED Blue"] = Amoled("#2979ff", "#448aff", "#00e5ff", "#ff1744", "#7c4dff"),
-        ["AMOLED Gold"] = Amoled("#ffd600", "#ffea00", "#ffab00", "#ff1744", "#ff6d00"),
-        ["AMOLED Matrix"] = Amoled("#00ff41", "#33ff77", "#aaff00", "#ff003c", "#00e5ff"),
-        ["AMOLED Ice"] = Amoled("#b3ffff", "#80d8ff", "#18ffff", "#ff5252", "#ea80fc"),
+        ["AMOLED Green"] = Amoled("#39ff14", "#00e676", "#c6ff00", "#ff1744", "#18ffff", "#e040fb"),
+        ["AMOLED Red"] = Amoled("#ff1744", "#ff5252", "#ffab00", "#b71c1c", "#ff80ab", "#7c4dff"),
+        ["AMOLED Purple Neon"] = Amoled("#d500f9", "#ea80fc", "#f50057", "#ff1744", "#00e5ff", "#ffea00"),
+        ["AMOLED Cyan"] = Amoled("#00e5ff", "#18ffff", "#00e676", "#ff1744", "#ea80fc", "#ff4081"),
+        ["AMOLED Orange"] = Amoled("#ff6d00", "#ff9100", "#ffea00", "#ff1744", "#ff80ab", "#536dfe"),
+        ["AMOLED Pink"] = Amoled("#ff4081", "#ff80ab", "#f50057", "#ff1744", "#e040fb", "#76ff03"),
+        ["AMOLED Blue"] = Amoled("#2979ff", "#448aff", "#00e5ff", "#ff1744", "#7c4dff", "#ffd600"),
+        ["AMOLED Gold"] = Amoled("#ffd600", "#ffea00", "#ffab00", "#ff1744", "#ff6d00", "#d500f9"),
+        ["AMOLED Matrix"] = Amoled("#00ff41", "#33ff77", "#aaff00", "#ff003c", "#00e5ff", "#bf5fff"),
+        ["AMOLED Ice"] = Amoled("#b3ffff", "#80d8ff", "#18ffff", "#ff5252", "#ea80fc", "#ffd740"),
 
         ["Light"] = Light("#1565c0", "#00838f", "#2e7d32", "#c62828", "#6a1b9a"),
         ["Light Green"] = Light("#1b5e20", "#2e7d32", "#558b2f", "#c62828", "#00695c"),
@@ -100,10 +100,14 @@ public static class ThemePresets
         settings.UiSplitter = preset.UiSplitter;
     }
 
-    private static ThemePreset Amoled(string neon, string accent, string warn, string err, string msg) =>
+    private static ThemePreset Amoled(string neon, string accent, string warn, string err, string msg, string highlight) =>
+        // cmd/hi/cursor were all `neon` - every role rendered as the same color, which is what
+        // made ls/git/prompt output in a real shell look monochrome. `highlight` is now its own
+        // distinct color (ANSI magenta) instead of reusing accent (ANSI blue), and cursor uses
+        // fg (matching every other preset's cursor=fg convention).
         Dark("#000000", "#f2f2f2", neon, "#6b6b6b",
-            err, warn, neon, msg, accent, neon,
-            neon, neon, "#000000", neonUi: true);
+            err, warn, neon, msg, accent, highlight,
+            "#f2f2f2", neon, "#000000", neonUi: true);
 
     private static ThemePreset Light(string command, string accent, string warn, string err, string highlight)
     {

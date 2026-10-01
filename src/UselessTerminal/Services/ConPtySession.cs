@@ -154,11 +154,7 @@ public sealed class ConPtySession : IDisposable
             lpAttributeList = _attributeList
         };
 
-        nint envBlock = 0;
-        if (_extraEnv is { Count: > 0 })
-        {
-            envBlock = BuildEnvironmentBlock(_extraEnv);
-        }
+        nint envBlock = BuildEnvironmentBlock(_extraEnv);
 
         if (!CreateProcessW(
                 null, command, 0, 0, false,
@@ -233,13 +229,21 @@ public sealed class ConPtySession : IDisposable
         WriteInput(System.Text.Encoding.UTF8.GetBytes(text));
     }
 
-    private static nint BuildEnvironmentBlock(Dictionary<string, string> extra)
+    private static nint BuildEnvironmentBlock(Dictionary<string, string>? extra)
     {
-        var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Defaults first so an inherited or user-set value always wins. Without these, a local
+        // shell doesn't care (Windows consoles use VT processing directly), but a remote shell
+        // over SSH does: with no TERM, it assumes a dumb terminal and suppresses all color.
+        var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["TERM"] = "xterm-256color",
+            ["COLORTERM"] = "truecolor",
+        };
         foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
             env[e.Key?.ToString() ?? ""] = e.Value?.ToString() ?? "";
-        foreach (var kv in extra)
-            env[kv.Key] = kv.Value;
+        if (extra is not null)
+            foreach (var kv in extra)
+                env[kv.Key] = kv.Value;
 
         var sb = new System.Text.StringBuilder();
         foreach (var kv in env)
